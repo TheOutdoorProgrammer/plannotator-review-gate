@@ -88,8 +88,18 @@ compose, so append to an existing `PreToolUse` array rather than replacing it:
 
 ```bash
 mkdir -p ~/.claude/commands
+curl -fsSL https://raw.githubusercontent.com/TheOutdoorProgrammer/plannotator-review-gate/main/commands/review-gate.md \
+  -o ~/.claude/commands/review-gate.md
+```
+
+If you cloned the repo, symlink it instead so it tracks `git pull`:
+
+```bash
 ln -s "$PWD/commands/review-gate.md" ~/.claude/commands/review-gate.md
 ```
+
+(The release tarballs ship it as well. `go install` gives you only the binary, which is
+why the curl is the default.)
 
 The command file also carries the rules the agent needs to follow when it gets denied —
 worth installing even if you prefer toggling from a shell.
@@ -164,6 +174,11 @@ and stops probing for it. Two things follow from that:
 Only a missing `cmux` binary is remembered. If cmux is installed but the toggle runs
 outside a cmux session (plain terminal, ssh, CI), nothing is cached — that's temporary,
 and caching it would disable the indicator inside cmux too.
+
+One honest limitation: the lock is a property of the *workspace tab*, while the gate is
+per *session*. Run two Claude Code sessions in one cmux workspace and the tab reflects
+whichever toggled last, so it can show a lock while one of them is ungated. Trust
+`plannotator-review-gate status`, not the tab, when it matters.
 
 ## Troubleshooting
 
