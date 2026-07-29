@@ -16,12 +16,19 @@ const sessionsDirName = "plannotator-review-gate.sessions"
 // sessions refresh their flag mtime on every gated edit, so only dead ones die.
 const staleFlagAge = 7 * 24 * time.Hour
 
-func sessionsDir() string {
+func claudeDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = os.Getenv("HOME")
 	}
-	return filepath.Join(home, ".claude", sessionsDirName)
+	return filepath.Join(home, ".claude")
+}
+
+// sessionsDir holds ONE kind of file: a per-session gate flag named for its
+// session id. Nothing else belongs here — pruneStaleFlags reaps every file in
+// it on an mtime rule, which would silently eat unrelated state.
+func sessionsDir() string {
+	return filepath.Join(claudeDir(), sessionsDirName)
 }
 
 func flagPath(sessionID string) string {

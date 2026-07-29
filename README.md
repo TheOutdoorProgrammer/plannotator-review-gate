@@ -80,9 +80,9 @@ compose, so append to an existing `PreToolUse` array rather than replacing it:
 }
 ```
 
-> **The timeout is load-bearing.** It's how long Claude Code waits for the hook, and
-> therefore how long you have to finish a review. The default (345600s ≈ 4 days) means
-> "as long as you need." Lower it and long reviews get cut off mid-thought.
+> **Don't lower the timeout.** It's how long Claude Code waits for the hook, and therefore
+> how long you have to finish a review. The default (345600s ≈ 4 days) means "as long as
+> you need." Lower it and long reviews get cut off mid-thought.
 
 **2. Install the slash command** so you can toggle the gate from inside Claude Code:
 
@@ -153,7 +153,17 @@ never wedge a session that never asked for review.
 
 If you use [cmux](https://github.com/manaflow-ai/cmux), enabling the gate puts a 🔒 on
 the current workspace tab so you can see at a glance which sessions are gated. It's
-best-effort and a silent no-op everywhere else.
+best-effort and a silent no-op everywhere else — nothing to configure either way.
+
+The first toggle on a machine without cmux writes `~/.claude/plannotator-review-gate.no-sidebar`
+and stops probing for it. Two things follow from that:
+
+- **Installed cmux later?** Delete that file and the indicator comes back.
+- **Want it off even with cmux installed?** Create the file yourself. That's the opt-out.
+
+Only a missing `cmux` binary is remembered. If cmux is installed but the toggle runs
+outside a cmux session (plain terminal, ssh, CI), nothing is cached — that's temporary,
+and caching it would disable the indicator inside cmux too.
 
 ## Troubleshooting
 
