@@ -1,0 +1,9 @@
+// Only rules that are genuinely wrong for how these docs are written are relaxed.
+// commands/ has its own config — those files are frontmatter-then-prose by format.
+{
+  "config": {
+    "default": true,
+    "MD013": false, // line-length: prose and tables legitimately exceed 80
+    "MD060": false  // table-column-style: pipe-spacing pedantry
+  }
+}

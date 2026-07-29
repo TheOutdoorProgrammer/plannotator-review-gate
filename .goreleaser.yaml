@@ -1,0 +1,75 @@
+# GoReleaser config — https://goreleaser.com
+# Release is driven by pushing a `vX.Y.Z` tag (see .github/workflows/release.yml).
+# The tag becomes the version, injected via -ldflags and shown by
+# `plannotator-review-gate version`.
+version: 2
+
+project_name: plannotator-review-gate
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: plannotator-review-gate
+    main: .
+    binary: plannotator-review-gate
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
+
+archives:
+  - id: plannotator-review-gate
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - commands/review-gate.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: TheOutdoorProgrammer
+    name: plannotator-review-gate
+  draft: false
+  prerelease: auto
+  header: |
+    ## plannotator-review-gate {{ .Tag }}
+
+    Review every Claude Code edit in Plannotator before it lands on disk.
+
+    Download a binary below, or `go install github.com/TheOutdoorProgrammer/plannotator-review-gate@{{ .Tag }}`.
+  footer: |
+    After installing, run `plannotator-review-gate hook-config` for the
+    `settings.json` wiring, then `plannotator-review-gate on` in any session
+    you want reviewed.

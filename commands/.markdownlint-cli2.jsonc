@@ -1,0 +1,10 @@
+// Claude Code command files open with YAML frontmatter, then prose. An H1 first
+// line would break the format, so MD041 cannot apply here.
+{
+  "config": {
+    "default": true,
+    "MD013": false,
+    "MD060": false,
+    "MD041": false // first-line-heading: frontmatter comes first by definition
+  }
+}

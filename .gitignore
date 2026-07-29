@@ -1,0 +1,8 @@
+# Built binary (same name as the repo, so `make build` output isn't committed)
+/plannotator-review-gate
+
+# GoReleaser output
+/dist/
+
+# Coverage
+coverage.out
