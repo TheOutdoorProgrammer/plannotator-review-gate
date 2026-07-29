@@ -15,14 +15,52 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime/debug"
+	"strings"
 )
 
-// Injected by GoReleaser at build time (-ldflags -X main.version=...).
+// Injected by GoReleaser at build time (-ldflags -X main.version=...). Only
+// release builds carry them — see versionInfo for everything else.
 var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
 )
+
+// versionInfo reports what this binary actually is. Release builds are stamped
+// by GoReleaser; `go install pkg@vX.Y.Z` and local `go build` get no ldflags at
+// all, so fall back to the module version and VCS stamps the toolchain embeds.
+func versionInfo() (v, sha, built string) {
+	v, sha, built = version, commit, date
+	if v != "dev" {
+		return
+	}
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+	// go install records the resolved module version; a local build says "(devel)".
+	if mv := bi.Main.Version; mv != "" && mv != "(devel)" {
+		v = strings.TrimPrefix(mv, "v")
+	}
+	dirty := false
+	for _, s := range bi.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			sha = s.Value
+		case "vcs.time":
+			built = s.Value
+		case "vcs.modified":
+			dirty = s.Value == "true"
+		}
+	}
+	// Go may already have stamped its own "+dirty" into Main.Version; don't
+	// append a second marker on top of it.
+	if dirty && !strings.Contains(v, "dirty") {
+		v += "-dirty"
+	}
+	return v, sha, built
+}
 
 func main() {
 	if len(os.Args) > 1 {
@@ -32,7 +70,8 @@ func main() {
 		case "hook-config":
 			printHookConfig()
 		case "version", "--version":
-			fmt.Printf("plannotator-review-gate %s (commit %s, built %s)\n", version, commit, date)
+			v, sha, built := versionInfo()
+			fmt.Printf("plannotator-review-gate %s (commit %s, built %s)\n", v, sha, built)
 		default:
 			fmt.Fprintf(os.Stderr, "plannotator-review-gate: unknown command %q\n\n", os.Args[1])
 			reviewGateCommand([]string{"help"})
