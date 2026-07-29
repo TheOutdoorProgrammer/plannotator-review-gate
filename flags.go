@@ -134,7 +134,7 @@ func printUsage() {
 	fmt.Println("  plannotator-review-gate toggle              flip it")
 	fmt.Println("  plannotator-review-gate status              is it on?")
 	fmt.Println("  plannotator-review-gate hook-config         print the settings.json wiring")
-	fmt.Println("  plannotator-review-gate version            ")
+	fmt.Println("  plannotator-review-gate version             print the version")
 	fmt.Println()
 	fmt.Println("With no arguments it runs as a Claude Code PreToolUse hook, reading the")
 	fmt.Println("event from stdin. The toggle is per session, keyed off CLAUDE_CODE_SESSION_ID.")
