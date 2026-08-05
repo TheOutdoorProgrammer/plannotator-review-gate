@@ -31,6 +31,19 @@ comes back denied with reviewer feedback, the change was NOT applied — revise
 it per the feedback and propose the edit again. Do not retry the identical
 edit, and do not work around the gate by writing files via Bash.
 
+While the gate is enabled, **narrate the edits worth narrating**.
+Before making an edit, queue an explanation and the gate posts it into that edit's review, pinned to the line:
+
+```bash
+plannotator-review-gate note <file> [--line N | --line N-M] \
+  [--type comment|suggestion|concern] "why this change looks like this"
+```
+
+Use it where the diff can't explain itself — a non-obvious workaround, a decision and the alternative you rejected, something you want challenged (`--type concern`), a gap you knowingly left.
+Skip it for mechanical edits; a note per hunk is noise.
+Queue notes **before** the edit, since the gate drains them when that edit is reviewed.
+Do **not** POST to Plannotator's annotation API yourself during a gated edit: those annotations come back as the reviewer's feedback and deny your own edit, and the hook blocks you for the review's whole life anyway.
+
 The gate **fails closed**: if it can't stage the edit or can't open Plannotator
 at all, the edit is denied rather than quietly applied unreviewed. That denial
 names the cause and is not something to code around — stop and tell the user, who
