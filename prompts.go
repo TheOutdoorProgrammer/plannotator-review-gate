@@ -51,3 +51,17 @@ func isApproved(out string) bool {
 	}
 	return false
 }
+
+// Appended whenever a review carries annotations. Written for triaging a bot's
+// findings ("do not change any code until we have discussed"), which contradicts
+// the gate: its contract is that the edit was blocked, revise and re-propose.
+const deniedSuffixAnchor = "Treat the findings above as unverified review input."
+
+// stripDeniedSuffix drops that boilerplate so the reviewer's own words are the
+// only instruction the agent gets.
+func stripDeniedSuffix(feedback string) string {
+	if cut, _, found := strings.Cut(feedback, deniedSuffixAnchor); found {
+		return strings.TrimRight(cut, " \t\n")
+	}
+	return feedback
+}

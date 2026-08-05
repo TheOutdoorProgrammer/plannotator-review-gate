@@ -174,7 +174,7 @@ func decisionFromReview(out string) (d *Decision, dismissed bool) {
 		Permission: "deny",
 		Reason: "The user reviewed this proposed change in the Plannotator review gate " +
 			"and left feedback before it was applied. The change has NOT been made. " +
-			"Address the feedback, then propose the edit again:\n\n" + text,
+			"Address the feedback, then propose the edit again:\n\n" + stripDeniedSuffix(text),
 	}, false
 }
 

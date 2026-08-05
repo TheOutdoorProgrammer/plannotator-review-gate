@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,6 +44,28 @@ func TestIsApprovedHonoursARuntimePrompt(t *testing.T) {
 		`{"prompts":{"review":{"runtimes":{"claude-code":{"approved":"approved by claude-code"}}}}}`)
 	if !isApproved("approved by claude-code") {
 		t.Error("runtime-specific approved prompt was not recognised")
+	}
+}
+
+func TestStripDeniedSuffix(t *testing.T) {
+	feedback := "## pkg/foo.go\n\nrename this thing\n\n" + deniedSuffixAnchor +
+		"\n\nInspect every finding against the actual code.\n\n" +
+		"Do not change any code until we have discussed the verdicts."
+
+	got := stripDeniedSuffix(feedback)
+	if !strings.Contains(got, "rename this thing") {
+		t.Error("the reviewer's own feedback was stripped")
+	}
+	// The suffix tells the agent not to change code, which is the opposite of
+	// what the gate just told it to do.
+	if strings.Contains(got, "Do not change any code") {
+		t.Errorf("the triage boilerplate survived: %q", got)
+	}
+
+	// Feedback without the suffix is untouched.
+	plain := "## pkg/foo.go\n\nrename this thing"
+	if got := stripDeniedSuffix(plain); got != plain {
+		t.Errorf("stripDeniedSuffix altered plain feedback: %q", got)
 	}
 }
 
