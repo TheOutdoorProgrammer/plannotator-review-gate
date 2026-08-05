@@ -19,9 +19,9 @@ func noSidebarPath() string {
 	return filepath.Join(claudeDir(), noSidebarFile)
 }
 
-// updateReviewGateSidebar puts a lock on the current cmux workspace tab while
-// the gate is on. Best-effort and a no-op outside cmux — never affects the
-// toggle.
+// updateReviewGateSidebar locks the current cmux workspace tab while the gate is
+// on; best-effort, never affects the toggle. INERT since cmux was retired for
+// muxy without a port — every toggle now takes the rememberNoCmux path.
 func updateReviewGateSidebar(enabled bool) {
 	if _, err := os.Stat(noSidebarPath()); err == nil {
 		return

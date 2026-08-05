@@ -181,7 +181,11 @@ The one exception is a crash *in this program* on a session with the gate off �
 exits 0 and lets the edit follow the normal permission flow, because a bug here should
 never wedge a session that never asked for review.
 
-## cmux integration
+## cmux integration (inert — cmux is retired)
+
+⚠️ **This does nothing on a machine without `cmux`** — which now includes the machine it was written on.
+cmux was retired in favour of muxy and the indicator was never ported, so in practice the gate paints no tab at all.
+It is documented here only because the code path is still present and harmless — treat the rest of this section as history until someone ports `sidebar.go`.
 
 If you use [cmux](https://github.com/manaflow-ai/cmux), enabling the gate puts a 🔒 on
 the current workspace tab so you can see at a glance which sessions are gated. It's
