@@ -67,6 +67,8 @@ func main() {
 		switch os.Args[1] {
 		case "on", "off", "toggle", "status", "help", "-h", "--help":
 			reviewGateCommand(os.Args[1:])
+		case "note":
+			noteCommand(os.Args[2:])
 		case "hook-config":
 			printHookConfig()
 		case "version", "--version":

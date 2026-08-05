@@ -133,6 +133,7 @@ func printUsage() {
 	fmt.Println("  plannotator-review-gate off                 disable for this session")
 	fmt.Println("  plannotator-review-gate toggle              flip it")
 	fmt.Println("  plannotator-review-gate status              is it on?")
+	fmt.Println("  plannotator-review-gate note <file> …       queue a note to show in the review")
 	fmt.Println("  plannotator-review-gate hook-config         print the settings.json wiring")
 	fmt.Println("  plannotator-review-gate version             print the version")
 	fmt.Println()

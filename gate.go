@@ -57,7 +57,17 @@ func gateReviewGate(ctx context.Context, ev *Event) *Decision {
 	if err := stageRepo(repo, ch, ev.CWD); err != nil {
 		return gateBroken(fmt.Sprintf("could not stage the edit for review (%v)", err))
 	}
-	return runPlannotator(ctx, repo)
+
+	// Notes about a file the agent never edited stay queued; only the ones this
+	// review actually showed are dropped.
+	mine, rest := notesFor(loadNotes(ev.SessionID), ch.path)
+	d, posted := runPlannotator(ctx, repo, stagedRelPath(ch.path, ev.CWD), mine)
+	if posted {
+		if err := saveNotes(ev.SessionID, rest); err != nil {
+			fmt.Fprintf(os.Stderr, "plannotator-review-gate: could not clear posted notes (%v)\n", err)
+		}
+	}
+	return d
 }
 
 // gateBroken fails the gate CLOSED: an unreviewed edit landing while the user

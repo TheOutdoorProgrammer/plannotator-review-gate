@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -17,16 +18,22 @@ const (
 	reviewApprovedMarker = "no changes requested"
 )
 
+// stagedRelPath is the path the staged diff will show for this edit, which is
+// also the filePath a line annotation must carry to pin to its line.
+func stagedRelPath(path, cwd string) string {
+	if cwd != "" {
+		if r, err := filepath.Rel(cwd, path); err == nil && !strings.HasPrefix(r, "..") {
+			return r
+		}
+	}
+	return filepath.Base(path)
+}
+
 // stageRepo builds a throwaway git repo whose only unstaged change is the
 // proposed edit: HEAD holds the current content (or intent-to-add for a new
 // file), the worktree holds the proposed content, keeping the real rel path.
 func stageRepo(repo string, ch *change, cwd string) error {
-	rel := filepath.Base(ch.path)
-	if cwd != "" {
-		if r, err := filepath.Rel(cwd, ch.path); err == nil && !strings.HasPrefix(r, "..") {
-			rel = r
-		}
-	}
+	rel := stagedRelPath(ch.path, cwd)
 	target := filepath.Join(repo, rel)
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
@@ -78,24 +85,76 @@ func stageRepo(repo string, ch *change, cwd string) error {
 
 // runPlannotator opens the staged repo in Plannotator's review UI: allow on
 // approval, deny carrying feedback, nil when the user dismisses it, broken-gate
-// deny when no verdict comes back at all.
-func runPlannotator(ctx context.Context, repo string) *Decision {
+// deny when no verdict comes back at all. posted reports whether ns was shown.
+func runPlannotator(ctx context.Context, repo, rel string, ns []note) (d *Decision, posted bool) {
 	bin := plannotatorBin()
 	if bin == "" {
-		return gateBroken("plannotator binary not found on PATH or in ~/.local/bin")
+		return gateBroken("plannotator binary not found on PATH or in ~/.local/bin"), false
 	}
 	cmd := exec.CommandContext(ctx, bin, "review")
 	cmd.Dir = repo
-	out, err := cmd.Output()
-	d, dismissed := decisionFromReview(string(out))
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Start(); err != nil {
+		return gateBroken(fmt.Sprintf("could not start plannotator (%v)", err)), false
+	}
+	if len(ns) > 0 {
+		posted = narrate(ctx, filepath.Base(repo), rel, ns)
+	}
+
+	err := cmd.Wait()
+	d, dismissed := verdictFromReview(stdout.String(), ns, posted)
 	switch {
 	case d != nil:
-		return d
+		return d, posted
 	case dismissed:
-		return nil
+		return nil, posted
 	default:
-		return gateBroken(fmt.Sprintf("plannotator returned no verdict (%v)", err))
+		return gateBroken(fmt.Sprintf("plannotator returned no verdict (%v)", err)), posted
 	}
+}
+
+// verdictFromReview strips the gate's own narration out of the review output
+// before reading it, so posted notes can never be mistaken for the reviewer's
+// feedback.
+func verdictFromReview(out string, ns []note, posted bool) (*Decision, bool) {
+	if !posted {
+		return decisionFromReview(out)
+	}
+	out = stripNotes(out, ns)
+	// A review whose only comments were ours is not an approval, and the gate
+	// never lets an edit through unreviewed.
+	if !strings.Contains(out, reviewClosedMarker) &&
+		!strings.Contains(out, reviewApprovedMarker) &&
+		strings.TrimSpace(out) != "" && !reviewerLeftContent(out) {
+		return &Decision{
+			Permission: "deny",
+			Reason: "The user submitted the Plannotator review without leaving any feedback " +
+				"of their own — the only comments in it were your own notes. The change has " +
+				"NOT been made. Ask what they want changed rather than re-proposing blindly.",
+		}, false
+	}
+	return decisionFromReview(out)
+}
+
+// narrate posts the queued notes into the review that was just opened. This is
+// the one place the gate does NOT fail closed: an unposted comment costs
+// nothing, whereas failing an edit over cosmetics would be maddening.
+func narrate(ctx context.Context, project, rel string, ns []note) bool {
+	baseURL, ok := findReviewSession(ctx, project)
+	if !ok {
+		fmt.Fprintln(os.Stderr, "plannotator-review-gate: review session never registered — notes not posted")
+		return false
+	}
+	if !waitForDiffReady(ctx, baseURL) {
+		fmt.Fprintln(os.Stderr, "plannotator-review-gate: review has no origin — notes would be dropped")
+		return false
+	}
+	if err := postNotes(ctx, baseURL, rel, ns); err != nil {
+		fmt.Fprintf(os.Stderr, "plannotator-review-gate: %v\n", err)
+		return false
+	}
+	return true
 }
 
 // decisionFromReview maps Plannotator's review stdout to a verdict. dismissed

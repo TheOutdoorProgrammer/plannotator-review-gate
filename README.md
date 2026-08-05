@@ -129,6 +129,28 @@ The toggle takes effect on the **very next edit** — no restart. State is keyed
 alone. Flags live in `~/.claude/plannotator-review-gate.sessions/` and stale ones are
 swept after 7 days.
 
+### Narrating an edit
+
+The agent can explain a change *inside the review*, pinned to the line it's about, so you read a narrated diff instead of reverse-engineering intent:
+
+```bash
+plannotator-review-gate note internal/model/model.go --line 42-44 \
+  "dropped the backticks — the tag parser treats them as a delimiter"
+plannotator-review-gate note internal/model/model.go --type concern \
+  "not sure this handles the empty case"
+```
+
+Queue notes *before* the edit; the gate posts them when that edit comes up for review and drops them once shown.
+`--line N` or `--line N-M` pins to a line, no `--line` posts a review-level comment, and `--type` is `comment` (default), `suggestion`, or `concern`.
+Notes are per session (`CLAUDE_CODE_SESSION_ID`), queued in `~/.claude/plannotator-review-gate.notes/`, and swept after 7 days.
+
+Two things worth knowing about why it works this way:
+
+- **The agent cannot post these itself.** Plannotator's annotation API is open to any local tool, but the hook blocks the edit tool call for the review's whole life, so the agent is never running while the review is on screen. The gate has to post for it.
+- **A posted note is stripped back out of the verdict.** Plannotator merges external annotations into your own set and exports them with no source marker, so an unstripped note would come back to the agent as *your* feedback and deny the edit it was explaining. Editing a note is your way of adopting it — an edited note stops matching and does reach the agent as feedback.
+
+Posting is best-effort and never fails an edit: if the review can't be found or the post fails, you get a line on stderr and the review proceeds as normal.
+
 ### What it skips
 
 Review fatigue kills the habit, so the gate stays out of the way for changes that aren't
