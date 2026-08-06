@@ -41,6 +41,12 @@ plannotator-review-gate note <file> [--line N | --line N-M] \
 
 Use it where the diff can't explain itself — a non-obvious workaround, a decision and the alternative you rejected, something you want challenged (`--type concern`), a gap you knowingly left.
 Skip it for mechanical edits; a note per hunk is noise.
+
+**Put each note on the line it's about.** `--line N` is the line number *after* your edit lands — the line you actually changed, not the top of the file.
+If a note isn't about one place in the file, omit `--line` and it posts as a review-level comment; that is what whole-change remarks are for.
+Never use `--line 1` as a stand-in for "somewhere in here", and don't guess a number either — a line that isn't in the diff lands detached in the sidebar, which is where an unpinned note goes anyway, minus the honesty.
+The queue enforces this. An unpinned note (no `--line`, or `--line 1`) is rejected when it runs past 3 lines or 400 characters, and a *second* unpinned note for the same file is rejected outright.
+Both rejections exit non-zero and tell you to split it up: pin each piece to the line it explains, or fold it into the one review-level note.
 Queue notes **before** the edit, since the gate drains them when that edit is reviewed.
 Do **not** POST to Plannotator's annotation API yourself during a gated edit: those annotations come back as the reviewer's feedback and deny your own edit, and the hook blocks you for the review's whole life anyway.
 

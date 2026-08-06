@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -37,6 +38,75 @@ func TestParseLineSpec(t *testing.T) {
 				t.Errorf("parseLineSpec(%q) = (%d, %d), want (%d, %d)", tc.spec, start, end, tc.start, tc.end)
 			}
 		})
+	}
+}
+
+// Narration is only worth reading beside the code it explains, so the queue
+// rejects the two shapes that dodge that: a wall of text with nowhere to be,
+// and a second one stacked on the same spot.
+func TestPlacementProblem(t *testing.T) {
+	long := strings.Repeat("x", maxLooseNoteChars+1)
+	pinned := note{Path: "/repo/a.go", LineStart: 42, LineEnd: 42, Text: long}
+	loose := note{Path: "/repo/a.go", Text: "what the whole change does"}
+
+	cases := []struct {
+		name         string
+		n            note
+		queued       []note
+		wantProblem  bool
+		whyItMatters string
+	}{
+		{name: "pinned and short", n: note{Path: "/repo/a.go", LineStart: 42, LineEnd: 42, Text: "why"}},
+		{name: "loose and short", n: loose},
+		{
+			name: "pinned wall of text", n: pinned,
+			whyItMatters: "pinning already does the work this polices — leave it alone",
+		},
+		{
+			name: "loose wall of text", n: note{Path: "/repo/a.go", Text: long},
+			wantProblem: true,
+		},
+		{
+			name: "line 1 wall of text", n: note{Path: "/repo/a.go", LineStart: 1, LineEnd: 1, Text: long},
+			wantProblem:  true,
+			whyItMatters: "line 1 is the free stand-in for unpinned, so it gets the same cap",
+		},
+		{
+			name: "loose multi-line", n: note{Path: "/repo/a.go", Text: strings.Repeat("one thing\n", maxLooseNoteLines+1)},
+			wantProblem: true,
+		},
+		{
+			name: "second loose note on the same file", n: loose, queued: []note{loose},
+			wantProblem:  true,
+			whyItMatters: "the reported pattern: every note piled on one spot",
+		},
+		{
+			name: "loose note beside a pinned one", n: loose, queued: []note{{Path: "/repo/a.go", LineStart: 42, LineEnd: 42, Text: "why"}},
+			whyItMatters: "one review-level note plus pinned notes is the shape we want",
+		},
+		{
+			name: "loose note per file", n: loose, queued: []note{{Path: "/repo/b.go", Text: "about b"}},
+			whyItMatters: "each file gets its own review, so one each is not a pile",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			problem := placementProblem(tc.n, tc.queued)
+			if tc.wantProblem && problem == "" {
+				t.Errorf("placementProblem(%+v) = \"\", want a rejection (%s)", tc.n, tc.whyItMatters)
+			}
+			if !tc.wantProblem && problem != "" {
+				t.Errorf("placementProblem(%+v) = %q, want it allowed (%s)", tc.n, problem, tc.whyItMatters)
+			}
+		})
+	}
+}
+
+// The rejection has to name the fix, or the agent retries the same shape.
+func TestPlacementProblemTellsTheAgentToSplit(t *testing.T) {
+	problem := placementProblem(note{Path: "/repo/a.go", Text: strings.Repeat("x", maxLooseNoteChars+1)}, nil)
+	if !strings.Contains(problem, "--line N") {
+		t.Errorf("rejection = %q, want it to point at --line", problem)
 	}
 }
 

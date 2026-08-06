@@ -144,6 +144,15 @@ Queue notes *before* the edit; the gate posts them when that edit comes up for r
 `--line N` or `--line N-M` pins to a line, no `--line` posts a review-level comment, and `--type` is `comment` (default), `suggestion`, or `concern`.
 Notes are per session (`CLAUDE_CODE_SESSION_ID`), queued in `~/.claude/plannotator-review-gate.notes/`, and swept after 7 days.
 
+**The queue pushes back on notes that aren't pinned.** Narration is worth reading only next to the code it explains, but notes are queued *before* the edit exists — so pinning means working out the post-edit line number, and the cheap way out is to park everything on line 1. Two guards make that the expensive option:
+
+| Rejected | Why |
+| --- | --- |
+| An unpinned note (no `--line`, or `--line 1`) over 3 lines or 400 characters | A wall of text with nowhere to be. Split it into one note per line. |
+| A *second* unpinned note for the same file | The pile-on-one-spot pattern. Pin it, or fold it into the first. |
+
+Both exit 64 and name the fix, so the agent retries with the note placed instead of retrying the same shape. A long note on a real line is left alone: pinning already took the work the guards exist to force. Thresholds are constants in [`notes.go`](notes.go).
+
 Two things worth knowing about why it works this way:
 
 - **The agent cannot post these itself.** Plannotator's annotation API is open to any local tool, but the hook blocks the edit tool call for the review's whole life, so the agent is never running while the review is on screen. The gate has to post for it.

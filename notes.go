@@ -19,6 +19,17 @@ const notesDirName = "plannotator-review-gate.notes"
 // worth reaching for when the agent wants a decision challenged.
 var noteTypes = []string{"comment", "suggestion", "concern"}
 
+// Caps on a note that isn't pinned to the code it explains. Notes are queued
+// before the edit exists, so pinning means working out the post-edit line
+// number — and an agent that skips that work parks everything on line 1.
+const (
+	maxLooseNoteLines = 3
+	maxLooseNoteChars = 400
+)
+
+const splitHint = "Split it: one note per line it explains (--line N), and keep a " +
+	"review-level note to what the whole change does."
+
 // A note is one queued explanation. LineStart of 0 means the note is not tied
 // to a line and is posted as a review-level (general) annotation.
 type note struct {
@@ -137,10 +148,12 @@ func noteCommand(args []string) {
 	}
 
 	pruneStaleNotes()
-	ns := append(loadNotes(sessionID), note{
-		Path: filepath.Clean(path), LineStart: start, LineEnd: end, Type: noteType, Text: text,
-	})
-	if err := saveNotes(sessionID, ns); err != nil {
+	queued := loadNotes(sessionID)
+	n := note{Path: filepath.Clean(path), LineStart: start, LineEnd: end, Type: noteType, Text: text}
+	if problem := placementProblem(n, queued); problem != "" {
+		noteUsageError(problem)
+	}
+	if err := saveNotes(sessionID, append(queued, n)); err != nil {
 		fmt.Fprintf(os.Stderr, "review gate: %v\n", err)
 		os.Exit(1)
 	}
@@ -151,6 +164,45 @@ func noteCommand(args []string) {
 	}
 	fmt.Printf("review gate: note queued on %s for %s — it posts when that edit is reviewed\n",
 		where, filepath.Base(path))
+}
+
+// looselyPlaced reports whether a note is unpinned: no --line, or a range from
+// line 1 — the stand-in agents use for "somewhere in this file".
+func looselyPlaced(n note) bool {
+	return n.LineStart == 0 || n.LineStart == 1
+}
+
+// placementProblem returns why a note can't be queued as placed, or "" if it is
+// fine. Only loosely-placed notes are policed: pinning already takes the work
+// this is trying to force, so a long note on a real line is left alone.
+func placementProblem(n note, queued []note) string {
+	if !looselyPlaced(n) {
+		return ""
+	}
+	const unpinned = "isn't pinned to the code it explains (no --line, or --line 1)"
+	if lines := strings.Count(n.Text, "\n") + 1; lines > maxLooseNoteLines {
+		return fmt.Sprintf("this note is %d lines and %s. %s", lines, unpinned, splitHint)
+	}
+	if chars := len([]rune(n.Text)); chars > maxLooseNoteChars {
+		return fmt.Sprintf("this note is %d characters (the cap is %d) and %s. %s",
+			chars, maxLooseNoteChars, unpinned, splitHint)
+	}
+	for _, q := range queued {
+		if q.Path == n.Path && looselyPlaced(q) {
+			return fmt.Sprintf("%s already has an unpinned note queued (%q). Pin this one to the "+
+				"line it explains (--line N), or fold it into that one — notes piled on the same "+
+				"spot read as one wall of text.", filepath.Base(n.Path), truncate(q.Text, 60))
+		}
+	}
+	return ""
+}
+
+func truncate(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "…"
 }
 
 // parseLineSpec reads "N" or "N-M". An empty spec means no line, which posts as
