@@ -13,8 +13,8 @@ attributes:
 A `PreToolUse` hook for Claude Code, Codex CLI, and Cursor CLI that turns the permission prompt for an edit into an actual terminal code review.
 With the gate on, Claude and Cursor `Edit`, `Write`, or `MultiEdit` calls and Codex `apply_patch` calls are staged in a throwaway git repository and rendered as a Markdown unified diff in Plannotator TUI.
 A single Codex patch may add, update, delete, or move multiple files; the gate reviews it as one atomic diff.
-Submitting with no annotations, or only looks-good annotations, applies the edit.
-Submitting comments or delete annotations denies it, so the files are never written and the feedback goes back to the model.
+Submitting with no annotations applies the edit; an approved-with-notes verdict also applies it and returns the notes as non-blocking guidance.
+A requested-revision verdict denies the edit, so the files are never written and the feedback goes back to the model.
 Closing the TUI without submitting defers to the normal permission flow.
 
 The gate is opt-in per agent session. Claude uses `CLAUDE_CODE_SESSION_ID`, Codex uses `CODEX_THREAD_ID`, and the Cursor `preToolUse` adapter injects the event's conversation id only when it rewrites a review-gate shell command.

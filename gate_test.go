@@ -20,6 +20,17 @@ func TestDecisionFromReview(t *testing.T) {
 	if d, _ := decisionFromReview("approved, no changes requested"); d == nil || d.Permission != "allow" {
 		t.Errorf("approved phrase: want allow, got %+v", d)
 	}
+	approvedWithNotes := `# Code Review — Approved with Notes
+
+Code review completed — the changes are approved. The notes below are non-blocking guidance, not a request for another revision.
+
+## foo.go
+
+Carry this into the next edit.`
+	if d, _ := decisionFromReview(approvedWithNotes); d == nil || d.Permission != "allow" ||
+		!strings.Contains(d.AdditionalContext, "Carry this into the next edit.") {
+		t.Errorf("approved with notes: want allow carrying context, got %+v", d)
+	}
 	d, _ := decisionFromReview("fix the error handling\nand rename the var")
 	if d == nil || d.Permission != "deny" {
 		t.Fatalf("feedback: want deny, got %+v", d)
@@ -271,7 +282,11 @@ func TestRespondDecision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"permission":"deny"`, `"agent_message":"fix this"`} {
+	for _, want := range []string{
+		`"permission":"deny"`,
+		`"agent_message":"fix this"`,
+		`"user_message":"fix this"`,
+	} {
 		if !strings.Contains(cursorOut, want) {
 			t.Errorf("Cursor envelope missing %q: %s", want, cursorOut)
 		}

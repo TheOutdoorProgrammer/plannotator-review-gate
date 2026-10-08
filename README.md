@@ -7,7 +7,8 @@ The built-in permission prompts offer limited review context. This hook replaces
 that moment with a full code review: the proposed change opens in
 [Plannotator](https://github.com/backnotprop/plannotator)'s review UI as a
 side-by-side diff. Approve it and the edit applies. Leave line comments and the
-edit is **denied**, never written, and your feedback goes back to the model.
+review can either apply the edit as **approved with notes** or deny it as a
+requested revision. In both cases, the feedback goes back to the model.
 
 It's opt-in **per session**, so one terminal can review every edit while another works
 unimpeded.
@@ -20,8 +21,8 @@ flowchart LR
     C -->|"whitespace, comments,<br/>scratchpads, plans"| Z
     C -->|yes| D[Stage the edit in a<br/>throwaway git repo]
     D --> E[Plannotator review UI]
-    E -->|approve| F[allow: edit applies]
-    E -->|line comments| G[deny: edit never written,<br/>feedback returned to model]
+    E -->|approve / approve with notes| F[allow: edit applies]
+    E -->|request revision| G[deny: edit never written,<br/>feedback returned to model]
     E -->|dismiss| Z
 ```
 

@@ -52,6 +52,11 @@ func isApproved(out string) bool {
 	return false
 }
 
+func isApprovedWithNotes(out string) bool {
+	return strings.Contains(out, reviewApprovedWithNotesMarker) &&
+		strings.Contains(out, "The notes below are non-blocking guidance")
+}
+
 // Appended whenever a review carries annotations. Written for triaging a bot's
 // findings ("do not change any code until we have discussed"), which contradicts
 // the gate: its contract is that the edit was blocked, revise and re-propose.

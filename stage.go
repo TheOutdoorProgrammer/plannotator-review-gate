@@ -14,8 +14,9 @@ import (
 // stdout text: this closed marker, the approved phrase, or anything else
 // (treated as reviewer feedback).
 const (
-	reviewClosedMarker   = "Review session closed without feedback."
-	reviewApprovedMarker = "no changes requested"
+	reviewClosedMarker            = "Review session closed without feedback."
+	reviewApprovedMarker          = "no changes requested"
+	reviewApprovedWithNotesMarker = "# Code Review — Approved with Notes"
 )
 
 // stagedRelPath is the path the staged diff will show for this edit, which is
@@ -151,6 +152,7 @@ func verdictFromReview(out string, ns []note, posted bool) (*Decision, bool) {
 	// A review whose only comments were ours is not an approval, and the gate
 	// never lets an edit through unreviewed.
 	if !strings.Contains(out, reviewClosedMarker) && !isApproved(out) &&
+		!isApprovedWithNotes(out) &&
 		strings.TrimSpace(out) != "" && !reviewerLeftContent(out) {
 		return &Decision{
 			Permission: "deny",
@@ -202,6 +204,16 @@ func decisionFromReview(out string) (d *Decision, dismissed bool) {
 	}
 	if text == "" {
 		return nil, false
+	}
+	if isApprovedWithNotes(text) {
+		feedback := stripDeniedSuffix(text)
+		return &Decision{
+			Permission: "allow",
+			Reason:     "Approved by the user in Plannotator with non-blocking notes.",
+			AdditionalContext: "The user approved the edit and left these non-blocking " +
+				"review notes. The edit was applied; carry the guidance into subsequent work:\n\n" +
+				feedback,
+		}, false
 	}
 	if isApproved(text) {
 		return &Decision{Permission: "allow", Reason: "Approved by the user in the Plannotator review gate."}, false

@@ -54,10 +54,14 @@ func eventMatchesHost(h host, ev *Event) bool {
 func respondDecision(h host, d *Decision) (string, error) {
 	var envelope any
 	if h == hostCursor {
+		agentMessage := d.Reason
+		if d.AdditionalContext != "" {
+			agentMessage = d.AdditionalContext
+		}
 		output := map[string]any{
 			"permission":    d.Permission,
 			"user_message":  cursorUserMessage(d),
-			"agent_message": d.Reason,
+			"agent_message": agentMessage,
 		}
 		if d.UpdatedInput != nil {
 			output["updated_input"] = d.UpdatedInput
@@ -71,6 +75,9 @@ func respondDecision(h host, d *Decision) (string, error) {
 		}
 		if d.UpdatedInput != nil {
 			output["updatedInput"] = d.UpdatedInput
+		}
+		if d.AdditionalContext != "" {
+			output["additionalContext"] = d.AdditionalContext
 		}
 		envelope = map[string]any{
 			"hookSpecificOutput": output,
@@ -87,7 +94,10 @@ func cursorUserMessage(d *Decision) string {
 	if d.Permission == "allow" {
 		return ""
 	}
-	return "The proposed edit was denied by the Plannotator review gate. Feedback was returned to the agent."
+	if d.Reason != "" {
+		return d.Reason
+	}
+	return "The proposed edit was denied by the Plannotator review gate."
 }
 
 func emitSessionEnv(r io.Reader, w io.Writer) error {
