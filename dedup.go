@@ -20,10 +20,18 @@ type sharedVerdict struct {
 	Decision *Decision `json:"decision"`
 }
 
-func coordinateReview(ctx context.Context, ev *Event, review func() *Decision) *Decision {
+type coordinatedReview struct {
+	Decision *Decision
+	Entry    string
+	Primary  bool
+}
+
+func coordinateReview(ctx context.Context, ev *Event, review func() *Decision) coordinatedReview {
 	root := filepath.Join(claudeDir(), inflightDirName)
 	if err := os.MkdirAll(root, 0o700); err != nil {
-		return gateBroken(fmt.Sprintf("could not create the review coordination directory (%v)", err))
+		return primaryCoordination("", gateBroken(
+			fmt.Sprintf("could not create the review coordination directory (%v)", err),
+		))
 	}
 	pruneInflight(root)
 
@@ -35,8 +43,14 @@ func coordinateReview(ctx context.Context, ev *Event, review func() *Decision) *
 	case os.IsExist(err):
 		return awaitReview(ctx, entry)
 	default:
-		return gateBroken(fmt.Sprintf("could not coordinate duplicate review hooks (%v)", err))
+		return primaryCoordination(entry, gateBroken(
+			fmt.Sprintf("could not coordinate duplicate review hooks (%v)", err),
+		))
 	}
+}
+
+func primaryCoordination(entry string, decision *Decision) coordinatedReview {
+	return coordinatedReview{Decision: decision, Entry: entry, Primary: true}
 }
 
 func reviewEntry(root string, ev *Event) string {
@@ -74,56 +88,96 @@ func claimReviewContext(ev *Event) (string, error) {
 	return verdict.Decision.AdditionalContext, nil
 }
 
-func leadReview(entry string, review func() *Decision) *Decision {
+func leadReview(entry string, review func() *Decision) coordinatedReview {
 	if err := os.WriteFile(filepath.Join(entry, "pid"), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
-		return gateBroken(fmt.Sprintf("could not record the review coordinator (%v)", err))
+		return primaryCoordination(entry, gateBroken(
+			fmt.Sprintf("could not record the review coordinator (%v)", err),
+		))
 	}
 	decision := review()
 	body, err := json.Marshal(sharedVerdict{Decision: decision})
 	if err != nil {
-		return gateBroken(fmt.Sprintf("could not encode the shared review verdict (%v)", err))
+		return primaryCoordination(entry, gateBroken(
+			fmt.Sprintf("could not encode the shared review verdict (%v)", err),
+		))
 	}
 	tmp := filepath.Join(entry, "result.tmp")
 	if err := os.WriteFile(tmp, body, 0o600); err != nil {
-		return gateBroken(fmt.Sprintf("could not record the shared review verdict (%v)", err))
+		return primaryCoordination(entry, gateBroken(
+			fmt.Sprintf("could not record the shared review verdict (%v)", err),
+		))
 	}
 	if err := os.Rename(tmp, filepath.Join(entry, "result.json")); err != nil {
-		return gateBroken(fmt.Sprintf("could not publish the shared review verdict (%v)", err))
+		return primaryCoordination(entry, gateBroken(
+			fmt.Sprintf("could not publish the shared review verdict (%v)", err),
+		))
 	}
-	return decision
+	return primaryCoordination(entry, decision)
 }
 
-func awaitReview(ctx context.Context, entry string) *Decision {
+func awaitReview(ctx context.Context, entry string) coordinatedReview {
 	started := time.Now()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
+	var decision *Decision
+	resultLoaded := false
 	for {
-		if body, err := os.ReadFile(filepath.Join(entry, "result.json")); err == nil {
-			var verdict sharedVerdict
-			if err := json.Unmarshal(body, &verdict); err != nil {
-				return gateBroken(fmt.Sprintf("the shared review verdict was malformed (%v)", err))
+		if !resultLoaded {
+			body, err := os.ReadFile(filepath.Join(entry, "result.json"))
+			if err == nil {
+				var verdict sharedVerdict
+				if err := json.Unmarshal(body, &verdict); err != nil {
+					return primaryCoordination(entry, gateBroken(
+						fmt.Sprintf("the shared review verdict was malformed (%v)", err),
+					))
+				}
+				decision = verdict.Decision
+				resultLoaded = true
+			} else if !os.IsNotExist(err) {
+				return primaryCoordination(entry, gateBroken(
+					fmt.Sprintf("could not read the shared review verdict (%v)", err),
+				))
 			}
-			return verdict.Decision
-		} else if !os.IsNotExist(err) {
-			return gateBroken(fmt.Sprintf("could not read the shared review verdict (%v)", err))
+		}
+		if resultLoaded {
+			if _, err := os.Stat(filepath.Join(entry, "response.ready")); err == nil {
+				return coordinatedReview{Decision: decision, Entry: entry}
+			} else if !os.IsNotExist(err) {
+				return primaryCoordination(entry, gateBroken(
+					fmt.Sprintf("could not inspect the primary review response (%v)", err),
+				))
+			}
 		}
 
 		if time.Since(started) > time.Second {
 			alive, err := reviewLeaderAlive(entry)
 			if err != nil {
-				return gateBroken(fmt.Sprintf("could not inspect the duplicate review coordinator (%v)", err))
+				return primaryCoordination(entry, gateBroken(
+					fmt.Sprintf("could not inspect the duplicate review coordinator (%v)", err),
+				))
 			}
 			if !alive {
-				return gateBroken("the duplicate review coordinator exited without a verdict")
+				return primaryCoordination(entry, gateBroken(
+					"the duplicate review coordinator exited without a complete response",
+				))
 			}
 		}
 
 		select {
 		case <-ctx.Done():
-			return gateBroken(fmt.Sprintf("timed out waiting for the shared review verdict (%v)", ctx.Err()))
+			return primaryCoordination(entry, gateBroken(
+				fmt.Sprintf("timed out waiting for the shared review verdict (%v)", ctx.Err()),
+			))
 		case <-ticker.C:
 		}
 	}
+}
+
+func markReviewResponded(entry string) error {
+	if entry == "" {
+		return nil
+	}
+	return os.WriteFile(filepath.Join(entry, "response.ready"), nil, 0o600)
 }
 
 func reviewLeaderAlive(entry string) (bool, error) {

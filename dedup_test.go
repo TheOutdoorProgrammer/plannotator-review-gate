@@ -29,13 +29,18 @@ func TestCoordinateReviewSharesOneVerdict(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	results := make([]*Decision, 2)
+	results := make([]coordinatedReview, 2)
 	var wg sync.WaitGroup
 	wg.Add(2)
 	for i := range results {
 		go func(i int) {
 			defer wg.Done()
 			results[i] = coordinateReview(ctx, ev, review)
+			if results[i].Primary {
+				if err := markReviewResponded(results[i].Entry); err != nil {
+					t.Errorf("markReviewResponded: %v", err)
+				}
+			}
 		}(i)
 	}
 	<-started
@@ -46,11 +51,18 @@ func TestCoordinateReviewSharesOneVerdict(t *testing.T) {
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("review ran %d times, want once", got)
 	}
-	for i, decision := range results {
-		if decision == nil || decision.Permission != "allow" ||
-			decision.AdditionalContext != "non-blocking review note" {
-			t.Errorf("result %d = %+v", i, decision)
+	primaries := 0
+	for i, result := range results {
+		if result.Primary {
+			primaries++
 		}
+		if result.Decision == nil || result.Decision.Permission != "allow" ||
+			result.Decision.AdditionalContext != "non-blocking review note" {
+			t.Errorf("result %d = %+v", i, result)
+		}
+	}
+	if primaries != 1 {
+		t.Fatalf("got %d primary responses, want one", primaries)
 	}
 
 	context, err := claimReviewContext(ev)

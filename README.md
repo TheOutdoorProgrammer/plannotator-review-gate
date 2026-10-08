@@ -233,7 +233,8 @@ The retired cmux sidebar indicator is no longer called from the toggle path.
 **The review UI opens more than once per edit** — update the gate. Current host
 adapters reject compatibility payloads imported from another agent's hook
 configuration, and duplicate Cursor registrations coordinate on `tool_use_id`
-so they share one review and one verdict. Also check for a separate Plannotator
+so one primary hook returns the verdict while duplicates return a neutral allow
+only after that response is published. Also check for a separate Plannotator
 edit hook.
 
 **Reviews get cut off** — the host hook `timeout` is too low. See the note in

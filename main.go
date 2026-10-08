@@ -160,7 +160,16 @@ func hookMode(h host) {
 	review := func() *Decision { return gateReviewGate(ctx, &ev) }
 	if h == hostCursor && ev.ToolUseID != "" && ev.isGatedTool() {
 		if _, enabled := gateOpts(ev.SessionID); enabled {
-			emit(h, coordinateReview(ctx, &ev, review))
+			coordinated := coordinateReview(ctx, &ev, review)
+			if !coordinated.Primary {
+				emit(h, &Decision{Permission: "allow"})
+				return
+			}
+			if emit(h, coordinated.Decision) {
+				if err := markReviewResponded(coordinated.Entry); err != nil {
+					fmt.Fprintf(os.Stderr, "plannotator-review-gate: recording primary response: %v\n", err)
+				}
+			}
 			return
 		}
 	}
@@ -197,10 +206,10 @@ func postHookMode(h host) {
 
 // emit prints the PreToolUse verdict, if any. A nil Decision means defer: print
 // nothing and let the normal permission flow decide.
-func emit(h host, d *Decision) {
+func emit(h host, d *Decision) bool {
 	if d == nil {
 		if h != hostCursor {
-			return
+			return true
 		}
 		// Cursor's failClosed mode treats an empty successful response as a
 		// hook failure. Explicitly allow deferred edits so a disabled gate does
@@ -210,7 +219,8 @@ func emit(h host, d *Decision) {
 	out, err := respondDecision(h, d)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "plannotator-review-gate: %v\n", err)
-		return
+		return false
 	}
-	fmt.Println(out)
+	_, err = fmt.Println(out)
+	return err == nil
 }
