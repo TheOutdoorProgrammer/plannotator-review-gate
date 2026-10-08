@@ -19,8 +19,9 @@ type Event struct {
 // Decision is the gate's verdict; a nil *Decision means defer to the
 // normal permission flow.
 type Decision struct {
-	Permission string // "allow" or "deny"
-	Reason     string // shown to the model; multiline is fine
+	Permission   string         // "allow" or "deny"
+	Reason       string         // shown to the model; multiline is fine
+	UpdatedInput map[string]any // optional replacement tool input
 }
 
 func (e *Event) isGatedTool() bool {

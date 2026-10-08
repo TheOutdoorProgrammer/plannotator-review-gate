@@ -43,18 +43,26 @@ func normalizeEvent(h host, ev *Event) {
 func respondDecision(h host, d *Decision) (string, error) {
 	var envelope any
 	if h == hostCursor {
-		envelope = map[string]any{
+		output := map[string]any{
 			"permission":    d.Permission,
 			"user_message":  cursorUserMessage(d),
 			"agent_message": d.Reason,
 		}
+		if d.UpdatedInput != nil {
+			output["updated_input"] = d.UpdatedInput
+		}
+		envelope = output
 	} else {
+		output := map[string]any{
+			"hookEventName":            "PreToolUse",
+			"permissionDecision":       d.Permission,
+			"permissionDecisionReason": d.Reason,
+		}
+		if d.UpdatedInput != nil {
+			output["updatedInput"] = d.UpdatedInput
+		}
 		envelope = map[string]any{
-			"hookSpecificOutput": map[string]any{
-				"hookEventName":            "PreToolUse",
-				"permissionDecision":       d.Permission,
-				"permissionDecisionReason": d.Reason,
-			},
+			"hookSpecificOutput": output,
 		}
 	}
 	raw, err := json.Marshal(envelope)
@@ -88,6 +96,43 @@ func emitSessionEnv(r io.Reader, w io.Writer) error {
 	})
 }
 
+func sessionCommandDecision(h host, ev *Event) *Decision {
+	isShell := h == hostCursor && ev.ToolName == "Shell" ||
+		h == hostCodex && ev.ToolName == "Bash"
+	if !isShell || ev.SessionID == "" {
+		return nil
+	}
+	var input map[string]any
+	if err := json.Unmarshal(ev.ToolInput, &input); err != nil {
+		return nil
+	}
+	command, ok := input["command"].(string)
+	if !ok {
+		return nil
+	}
+	fields := strings.Fields(command)
+	if len(fields) < 2 || filepath.Base(fields[0]) != "plannotator-review-gate" ||
+		!isSessionCommand(fields[1]) {
+		return nil
+	}
+	input["command"] = "PLANNOTATOR_REVIEW_GATE_SESSION_ID=" +
+		shellQuote(ev.SessionID) + " " + command
+	return &Decision{Permission: "allow", UpdatedInput: input}
+}
+
+func isSessionCommand(value string) bool {
+	switch value {
+	case "on", "off", "toggle", "status", "note":
+		return true
+	default:
+		return false
+	}
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
 func printHookConfig(h host) {
 	intro := "Merge into ~/.claude/settings.json under hooks:"
 	switch h {
@@ -106,7 +151,7 @@ func hookConfig(h host) map[string]any {
 			"description": "Plannotator review gate",
 			"hooks": map[string]any{
 				"PreToolUse": []any{map[string]any{
-					"matcher": "Edit|Write",
+					"matcher": "Bash|Edit|Write",
 					"hooks": []any{map[string]any{
 						"type":          "command",
 						"command":       binaryPath() + " hook codex",
@@ -120,12 +165,9 @@ func hookConfig(h host) map[string]any {
 		return map[string]any{
 			"version": 1,
 			"hooks": map[string]any{
-				"sessionStart": []any{map[string]any{
-					"command": binaryPath() + " session-env",
-				}},
 				"preToolUse": []any{map[string]any{
 					"command":    binaryPath() + " hook cursor",
-					"matcher":    "Write|Delete|ApplyPatch|apply_patch",
+					"matcher":    "Shell|Write|Delete|ApplyPatch|apply_patch",
 					"timeout":    reviewGateTimeout,
 					"failClosed": true,
 				}},

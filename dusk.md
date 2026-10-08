@@ -17,7 +17,7 @@ Submitting with no annotations, or only looks-good annotations, applies the edit
 Submitting comments or delete annotations denies it, so the files are never written and the feedback goes back to the model.
 Closing the TUI without submitting defers to the normal permission flow.
 
-The gate is opt-in per agent session. Claude uses `CLAUDE_CODE_SESSION_ID`, Codex uses `CODEX_SESSION_ID`, and Cursor receives `PLANNOTATOR_REVIEW_GATE_SESSION_ID` from the gate's `sessionStart` hook using its conversation id.
+The gate is opt-in per agent session. Claude uses `CLAUDE_CODE_SESSION_ID`, Codex uses `CODEX_THREAD_ID`, and the Cursor `preToolUse` adapter injects the event's conversation id only when it rewrites a review-gate shell command.
 Flags remain under `~/.claude/plannotator-review-gate.sessions/` for backward compatibility and stale ones are swept after seven days.
 `plannotator-review-gate hook-config` prints mergeable hook snippets for all three agents, and its long timeout is the review deadline rather than decoration: lowering it cuts reviews off mid-thought.
 Releases are tag-driven, with a `vX.Y.Z` tag running the tests and then GoReleaser.

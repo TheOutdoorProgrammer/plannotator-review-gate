@@ -134,6 +134,10 @@ func hookMode(h host) {
 	if ev.HookEventName != "PreToolUse" {
 		return
 	}
+	if d := sessionCommandDecision(h, &ev); d != nil {
+		emit(h, d)
+		return
+	}
 	ctx, cancel := gateContext()
 	defer cancel()
 	emit(h, gateReviewGate(ctx, &ev))
@@ -143,7 +147,13 @@ func hookMode(h host) {
 // nothing and let the normal permission flow decide.
 func emit(h host, d *Decision) {
 	if d == nil {
-		return
+		if h != hostCursor {
+			return
+		}
+		// Cursor's failClosed mode treats an empty successful response as a
+		// hook failure. Explicitly allow deferred edits so a disabled gate does
+		// not wedge every matched tool call.
+		d = &Decision{Permission: "allow"}
 	}
 	out, err := respondDecision(h, d)
 	if err != nil {

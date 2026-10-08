@@ -56,14 +56,40 @@ func TestParseHost(t *testing.T) {
 	}
 }
 
+func TestSessionCommandDecision(t *testing.T) {
+	ev := Event{
+		host:      hostCursor,
+		SessionID: "cursor-session",
+		ToolName:  "Shell",
+		ToolInput: json.RawMessage(`{
+			"command":"plannotator-review-gate on --skip-tests",
+			"working_directory":"/workspace"
+		}`),
+	}
+	d := sessionCommandDecision(hostCursor, &ev)
+	if d == nil || d.Permission != "allow" {
+		t.Fatalf("expected rewritten allow decision, got %+v", d)
+	}
+	command, _ := d.UpdatedInput["command"].(string)
+	if !strings.Contains(command, "PLANNOTATOR_REVIEW_GATE_SESSION_ID='cursor-session'") ||
+		d.UpdatedInput["working_directory"] != "/workspace" {
+		t.Fatalf("unexpected rewritten input: %+v", d.UpdatedInput)
+	}
+
+	ev.ToolName = "Write"
+	if d := sessionCommandDecision(hostCursor, &ev); d != nil {
+		t.Fatalf("non-shell edit should not be rewritten: %+v", d)
+	}
+}
+
 func TestHookConfigs(t *testing.T) {
 	cases := []struct {
 		host host
 		want []string
 	}{
 		{hostClaude, []string{"hook claude", "Edit|Write|MultiEdit"}},
-		{hostCodex, []string{"hook codex", "Edit|Write", "statusMessage"}},
-		{hostCursor, []string{"session-env", "hook cursor", "failClosed"}},
+		{hostCodex, []string{"hook codex", "Bash|Edit|Write", "statusMessage"}},
+		{hostCursor, []string{"hook cursor", "Shell|Write", "failClosed"}},
 	}
 	for _, tc := range cases {
 		raw, err := json.Marshal(hookConfig(tc.host))

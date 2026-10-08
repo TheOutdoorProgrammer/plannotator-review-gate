@@ -276,4 +276,15 @@ func TestRespondDecision(t *testing.T) {
 			t.Errorf("Cursor envelope missing %q: %s", want, cursorOut)
 		}
 	}
+
+	rewritten, err := respondDecision(hostCursor, &Decision{
+		Permission:   "allow",
+		UpdatedInput: map[string]any{"command": "rewritten"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rewritten, `"updated_input":{"command":"rewritten"}`) {
+		t.Errorf("Cursor rewrite envelope is malformed: %s", rewritten)
+	}
 }

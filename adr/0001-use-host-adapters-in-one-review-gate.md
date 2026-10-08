@@ -20,7 +20,7 @@ Human review should remain opt-in per session and present the same Plannotator d
 
 ## Decision Outcome
 
-Keep staging, filtering, notes, and Plannotator verdict handling in one binary. Add explicit host adapters at the input, edit-normalization, response, session-environment, and generated-wiring boundaries. Preserve the no-argument Claude hook entrypoint for compatibility, while generated configuration names each host explicitly. Cursor wiring sets `failClosed`; Codex receives valid deny responses for every detected gate failure, while documenting that Codex itself still fails open if the hook process crashes or times out.
+Keep staging, filtering, notes, and Plannotator verdict handling in one binary. Add explicit host adapters at the input, edit-normalization, response, session-command, and generated-wiring boundaries. Preserve the no-argument Claude hook entrypoint for compatibility, while generated configuration names each host explicitly. Cursor wiring sets `failClosed` and explicitly allows deferred tool calls; Codex receives valid deny responses for every detected gate failure, while documenting that Codex itself still fails open if the hook process crashes or times out.
 
 ## Consequences
 
