@@ -13,6 +13,7 @@ type Event struct {
 	TranscriptPath string          `json:"transcript_path"`
 	CWD            string          `json:"cwd"`
 	ToolName       string          `json:"tool_name"`
+	ToolUseID      string          `json:"tool_use_id"`
 	ToolInput      json.RawMessage `json:"tool_input"`
 }
 

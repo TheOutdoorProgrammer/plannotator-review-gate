@@ -1,0 +1,127 @@
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"syscall"
+	"time"
+)
+
+const inflightDirName = "plannotator-review-gate.inflight"
+
+type sharedVerdict struct {
+	Decision *Decision `json:"decision"`
+}
+
+func coordinateReview(ctx context.Context, ev *Event, review func() *Decision) *Decision {
+	root := filepath.Join(claudeDir(), inflightDirName)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return gateBroken(fmt.Sprintf("could not create the review coordination directory (%v)", err))
+	}
+	pruneInflight(root)
+
+	sum := sha256.Sum256([]byte(ev.SessionID + "\x00" + ev.ToolUseID))
+	entry := filepath.Join(root, hex.EncodeToString(sum[:]))
+	err := os.Mkdir(entry, 0o700)
+	switch {
+	case err == nil:
+		return leadReview(entry, review)
+	case os.IsExist(err):
+		return awaitReview(ctx, entry)
+	default:
+		return gateBroken(fmt.Sprintf("could not coordinate duplicate review hooks (%v)", err))
+	}
+}
+
+func leadReview(entry string, review func() *Decision) *Decision {
+	if err := os.WriteFile(filepath.Join(entry, "pid"), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+		return gateBroken(fmt.Sprintf("could not record the review coordinator (%v)", err))
+	}
+	decision := review()
+	body, err := json.Marshal(sharedVerdict{Decision: decision})
+	if err != nil {
+		return gateBroken(fmt.Sprintf("could not encode the shared review verdict (%v)", err))
+	}
+	tmp := filepath.Join(entry, "result.tmp")
+	if err := os.WriteFile(tmp, body, 0o600); err != nil {
+		return gateBroken(fmt.Sprintf("could not record the shared review verdict (%v)", err))
+	}
+	if err := os.Rename(tmp, filepath.Join(entry, "result.json")); err != nil {
+		return gateBroken(fmt.Sprintf("could not publish the shared review verdict (%v)", err))
+	}
+	return decision
+}
+
+func awaitReview(ctx context.Context, entry string) *Decision {
+	started := time.Now()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if body, err := os.ReadFile(filepath.Join(entry, "result.json")); err == nil {
+			var verdict sharedVerdict
+			if err := json.Unmarshal(body, &verdict); err != nil {
+				return gateBroken(fmt.Sprintf("the shared review verdict was malformed (%v)", err))
+			}
+			return verdict.Decision
+		} else if !os.IsNotExist(err) {
+			return gateBroken(fmt.Sprintf("could not read the shared review verdict (%v)", err))
+		}
+
+		if time.Since(started) > time.Second {
+			alive, err := reviewLeaderAlive(entry)
+			if err != nil {
+				return gateBroken(fmt.Sprintf("could not inspect the duplicate review coordinator (%v)", err))
+			}
+			if !alive {
+				return gateBroken("the duplicate review coordinator exited without a verdict")
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return gateBroken(fmt.Sprintf("timed out waiting for the shared review verdict (%v)", ctx.Err()))
+		case <-ticker.C:
+		}
+	}
+}
+
+func reviewLeaderAlive(entry string) (bool, error) {
+	body, err := os.ReadFile(filepath.Join(entry, "pid"))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	pid, err := strconv.Atoi(string(body))
+	if err != nil {
+		return false, err
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false, err
+	}
+	err = process.Signal(syscall.Signal(0))
+	return err == nil || errors.Is(err, syscall.EPERM), nil
+}
+
+func pruneInflight(root string) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-staleFlagAge)
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err == nil && info.ModTime().Before(cutoff) {
+			_ = os.RemoveAll(filepath.Join(root, entry.Name()))
+		}
+	}
+}

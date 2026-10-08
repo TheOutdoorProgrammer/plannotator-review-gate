@@ -146,7 +146,14 @@ func hookMode(h host) {
 	}
 	ctx, cancel := gateContext()
 	defer cancel()
-	emit(h, gateReviewGate(ctx, &ev))
+	review := func() *Decision { return gateReviewGate(ctx, &ev) }
+	if h == hostCursor && ev.ToolUseID != "" && ev.isGatedTool() {
+		if _, enabled := gateOpts(ev.SessionID); enabled {
+			emit(h, coordinateReview(ctx, &ev, review))
+			return
+		}
+	}
+	emit(h, review())
 }
 
 // emit prints the PreToolUse verdict, if any. A nil Decision means defer: print
