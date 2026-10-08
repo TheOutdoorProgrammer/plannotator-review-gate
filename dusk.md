@@ -51,5 +51,5 @@ Once a delivery exists, malformed timestamps, changed annotations, or mismatched
 They render above the diff and are removed from the queue once shown, so they cannot be mistaken for human feedback.
 
 **`sidebar.go` is inert.**
-The lock indicator only ever spoke cmux, which is retired, so on a current machine it paints nothing.
+The lock indicator only ever spoke cmux, which is retired, and toggles no longer call it.
 `plannotator-review-gate status` is the only trustworthy answer to whether a session is gated.

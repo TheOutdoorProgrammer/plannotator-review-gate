@@ -28,6 +28,27 @@ func TestNormalizeEvent(t *testing.T) {
 	}
 }
 
+func TestEventMatchesHost(t *testing.T) {
+	cursorEvent := Event{
+		HookEventName:  "preToolUse",
+		ConversationID: "cursor-conversation",
+	}
+	if !eventMatchesHost(hostCursor, &cursorEvent) {
+		t.Fatal("Cursor adapter should accept Cursor payloads")
+	}
+	if eventMatchesHost(hostClaude, &cursorEvent) {
+		t.Fatal("Claude adapter must ignore Cursor compatibility payloads")
+	}
+
+	claudeEvent := Event{HookEventName: "PreToolUse", SessionID: "claude-session"}
+	if !eventMatchesHost(hostClaude, &claudeEvent) {
+		t.Fatal("Claude adapter should accept Claude payloads")
+	}
+	if eventMatchesHost(hostCursor, &claudeEvent) {
+		t.Fatal("Cursor adapter must ignore Claude payloads")
+	}
+}
+
 func TestEmitSessionEnv(t *testing.T) {
 	input := strings.NewReader(`{"session_id":"cursor-session"}`)
 	var output bytes.Buffer

@@ -115,12 +115,10 @@ func reviewGateCommand(args []string) {
 		}
 		fmt.Printf("review gate: enabled for this session%s; every gated "+
 			"edit opens in Plannotator's review UI\n", extra)
-		updateReviewGateSidebar(true)
 	case verb == "off" || verb == "toggle":
 		_ = os.Remove(flag)
 		fmt.Println("review gate: disabled for this session — edits follow the " +
 			"normal permission flow")
-		updateReviewGateSidebar(false)
 	case verb == "status":
 		opts, on := gateOpts(sessionID)
 		if !on {

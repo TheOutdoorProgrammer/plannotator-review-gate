@@ -40,6 +40,17 @@ func normalizeEvent(h host, ev *Event) {
 	}
 }
 
+func eventMatchesHost(h host, ev *Event) bool {
+	switch h {
+	case hostClaude:
+		return ev.ConversationID == "" && ev.HookEventName != "preToolUse"
+	case hostCursor:
+		return ev.ConversationID != "" || ev.HookEventName == "preToolUse"
+	default:
+		return ev.ConversationID == ""
+	}
+}
+
 func respondDecision(h host, d *Decision) (string, error) {
 	var envelope any
 	if h == hostCursor {

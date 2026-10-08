@@ -130,6 +130,12 @@ func hookMode(h host) {
 		fmt.Fprintf(os.Stderr, "plannotator-review-gate: decoding event: %v\n", err)
 		return
 	}
+	if !eventMatchesHost(h, &ev) {
+		if h == hostCursor {
+			emit(h, &Decision{Permission: "allow"})
+		}
+		return
+	}
 	normalizeEvent(h, &ev)
 	if ev.HookEventName != "PreToolUse" {
 		return

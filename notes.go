@@ -98,10 +98,10 @@ func notesFor(ns []note, path string) (matched, rest []note) {
 //
 //	note <file> [--line N | --line N-M] [--type comment|suggestion|concern] "text"
 func noteCommand(args []string) {
-	sessionID := os.Getenv("CLAUDE_CODE_SESSION_ID")
+	sessionID := currentSessionID()
 	if sessionID == "" {
-		fmt.Fprintln(os.Stderr, "review gate: no CLAUDE_CODE_SESSION_ID — run this "+
-			"inside a Claude Code session (notes are queued per session).")
+		fmt.Fprintln(os.Stderr, "review gate: no supported agent session id; run this "+
+			"inside Claude Code, Codex, or Cursor (notes are queued per session).")
 		os.Exit(64)
 	}
 

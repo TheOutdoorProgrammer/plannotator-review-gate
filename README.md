@@ -219,38 +219,19 @@ The one exception is a crash *in this program* on a session with the gate off �
 exits 0 and lets the edit follow the normal permission flow, because a bug here should
 never wedge a session that never asked for review.
 
-## cmux integration (inert — cmux is retired)
+## cmux integration
 
-⚠️ **This does nothing on a machine without `cmux`** — which now includes the machine it was written on.
-cmux was retired in favour of muxy and the indicator was never ported, so in practice the gate paints no tab at all.
-It is documented here only because the code path is still present and harmless — treat the rest of this section as history until someone ports `sidebar.go`.
-
-If you use [cmux](https://github.com/manaflow-ai/cmux), enabling the gate puts a 🔒 on
-the current workspace tab so you can see at a glance which sessions are gated. It's
-best-effort and a silent no-op everywhere else — nothing to configure either way.
-
-The first toggle on a machine without cmux writes `~/.claude/plannotator-review-gate.no-sidebar`
-and stops probing for it. Two things follow from that:
-
-- **Installed cmux later?** Delete that file and the indicator comes back.
-- **Want it off even with cmux installed?** Create the file yourself. That's the opt-out.
-
-Only a missing `cmux` binary is remembered. If cmux is installed but the toggle runs
-outside a cmux session (plain terminal, ssh, CI), nothing is cached — that's temporary,
-and caching it would disable the indicator inside cmux too.
-
-One honest limitation: the lock is a property of the *workspace tab*, while the gate is
-per *session*. Run two Claude Code sessions in one cmux workspace and the tab reflects
-whichever toggled last, so it can show a lock while one of them is ungated. Trust
-`plannotator-review-gate status`, not the tab, when it matters.
+The retired cmux sidebar indicator is no longer called from the toggle path.
+`plannotator-review-gate status` is the source of truth for the current session.
 
 ## Troubleshooting
 
 **"plannotator binary not found"** — the hook runs with a minimal `PATH`. Either put
 `plannotator` in `~/.local/bin` (checked directly) or use an absolute path.
 
-**The review UI opens twice per edit** — you have both this gate and a separate
-Plannotator edit-hook wired in `settings.json`. Keep one.
+**The review UI opens more than once per edit** — update the gate. Current host
+adapters reject compatibility payloads imported from another agent's hook
+configuration. Also check for a separate Plannotator edit hook.
 
 **Reviews get cut off** — the host hook `timeout` is too low. See the note in
 Setup.
