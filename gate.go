@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"slices"
 	"time"
 )
 
@@ -22,29 +21,19 @@ func gateContext() (context.Context, context.CancelFunc) {
 // does not apply.
 func gateReviewGate(ctx context.Context, ev *Event) *Decision {
 	opts, enabled := gateOpts(ev.SessionID)
-	if ev.SessionID == "" || !enabled || !slices.Contains(gatedTools, ev.ToolName) {
+	if ev.SessionID == "" || !enabled || !ev.isGatedTool() {
 		return nil
 	}
 	// Keep the flag fresh so pruneStaleFlags doesn't reap an active session.
 	now := time.Now()
 	_ = os.Chtimes(flagPath(ev.SessionID), now, now)
 
-	ch := proposedChange(ev.ToolName, ev.ToolInput, ev.CWD)
-	if ch == nil || ch.before == ch.after {
-		return nil
+	changes, err := proposedChanges(ev.ToolName, ev.ToolInput, ev.CWD)
+	if err != nil {
+		return gateBroken(fmt.Sprintf("could not preview the proposed edit (%v)", err))
 	}
-	if opts["skip-tests"] && isTestFile(ch.path) {
-		return nil
-	}
-	if skipPath(ch.path) {
-		return nil
-	}
-	// Review noise: pure whitespace/blank-line churn (any file type), or a
-	// comment-only edit to an existing file of a known language.
-	if isWhitespaceOnlyChange(ch.before, ch.after) {
-		return nil
-	}
-	if ch.exists && isCommentOnlyChange(ch.path, ch.before, ch.after) {
+	changes = reviewableChanges(changes, opts)
+	if len(changes) == 0 {
 		return nil
 	}
 
@@ -54,20 +43,52 @@ func gateReviewGate(ctx context.Context, ev *Event) *Decision {
 	}
 	defer func() { _ = os.RemoveAll(repo) }()
 
-	if err := stageRepo(repo, ch, ev.CWD); err != nil {
+	if err := stageRepo(repo, changes, ev.CWD); err != nil {
 		return gateBroken(fmt.Sprintf("could not stage the edit for review (%v)", err))
 	}
 
-	// Notes about a file the agent never edited stay queued; only the ones this
-	// review actually showed are dropped.
-	mine, rest := notesFor(loadNotes(ev.SessionID), ch.path)
-	d, posted := runPlannotator(ctx, repo, stagedRelPath(ch.path, ev.CWD), mine)
+	remaining := loadNotes(ev.SessionID)
+	var notesByFile []reviewNotes
+	for _, ch := range changes {
+		var mine []note
+		mine, remaining = notesFor(remaining, ch.path)
+		if len(mine) > 0 {
+			notesByFile = append(notesByFile, reviewNotes{
+				rel:   stagedRelPath(ch.path, ev.CWD),
+				notes: mine,
+			})
+		}
+	}
+	d, posted := runPlannotator(ctx, repo, notesByFile)
 	if posted {
-		if err := saveNotes(ev.SessionID, rest); err != nil {
+		if err := saveNotes(ev.SessionID, remaining); err != nil {
 			fmt.Fprintf(os.Stderr, "plannotator-review-gate: could not clear posted notes (%v)\n", err)
 		}
 	}
 	return d
+}
+
+func reviewableChanges(changes []change, opts map[string]bool) []change {
+	out := make([]change, 0, len(changes))
+	for _, ch := range changes {
+		if ch.before == ch.after && !ch.deleted {
+			continue
+		}
+		if opts["skip-tests"] && isTestFile(ch.path) {
+			continue
+		}
+		if skipPath(ch.path) {
+			continue
+		}
+		if isWhitespaceOnlyChange(ch.before, ch.after) {
+			continue
+		}
+		if ch.exists && !ch.deleted && isCommentOnlyChange(ch.path, ch.before, ch.after) {
+			continue
+		}
+		out = append(out, ch)
+	}
+	return out
 }
 
 // gateBroken fails the gate CLOSED: an unreviewed edit landing while the user

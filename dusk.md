@@ -23,7 +23,7 @@ Flags remain under `~/.claude/plannotator-review-gate.sessions/` for backward co
 Releases are tag-driven, with a `vX.Y.Z` tag running the tests and then GoReleaser.
 
 The source is flat at the repository root, roughly one file per concern.
-`gate.go` makes the decision, `change.go` normalizes Claude and Cursor edits, `codex_patch.go` previews Codex patches with the session's `apply_patch` helper, `filter.go` and `comments.go` decide what is not worth reviewing, `stage.go` builds the temporary repository and launches the TUI, `terminal.go` bridges it through a pseudo-terminal, `tui.go` owns its submission record contract, `notes.go` carries the agent's context, and `sidebar.go` is the tab indicator.
+`gate.go` makes the decision, `host.go` normalizes host events and responses, `change.go` normalizes single-file edits, `patch.go` previews atomic Codex and Cursor patches, `filter.go` and `comments.go` decide what is not worth reviewing, `stage.go` builds the temporary repository and launches the TUI, `notes.go` carries the agent's context, and `sidebar.go` is the tab indicator.
 
 ## Gotchas
 
@@ -32,10 +32,10 @@ If it cannot preview or stage the edit, open the controlling terminal, launch Pl
 The denial explicitly tells the model not to retry, write the file some other way, or turn the gate off.
 The single exception is a crash in this program on a session with the gate *off*, which exits 0, because a bug here must never wedge a session that never asked for review.
 
-**Codex patch previews use Codex's own helper.**
-The custom `apply_patch` format is not parsed as a hand-rolled approximation.
-The gate copies only the named regular files into an isolated directory, rejects lexical and symlink path escapes, runs the session's `apply_patch` helper there, then stages the resulting file set.
-If that helper is missing or rejects the patch, an enabled gate fails closed.
+**Patch previews are parsed before files are staged.**
+The gate validates begin and end markers, anchor and hunk context, duplicate paths, regular-file sources, lexical escapes, and symlink crossings.
+It stages the complete add, update, delete, or move set as one diff.
+Any malformed or unsupported patch fails an enabled gate closed.
 
 **The TUI must not deliver directly to Herdr.**
 The agent is blocked inside the hook while the review runs, so prompting the same pane cannot carry the verdict back to the hook.

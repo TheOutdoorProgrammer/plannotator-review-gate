@@ -97,3 +97,19 @@ func TestSessionsDirHonorsHome(t *testing.T) {
 		t.Errorf("sessionsDir() = %q, want %q", got, want)
 	}
 }
+
+func TestCurrentSessionIDAcrossHosts(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "claude")
+	if got := currentSessionID(); got != "claude" {
+		t.Fatalf("Claude session id = %q", got)
+	}
+	t.Setenv("CODEX_THREAD_ID", "codex")
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	if got := currentSessionID(); got != "codex" {
+		t.Fatalf("Codex session id = %q", got)
+	}
+	t.Setenv("PLANNOTATOR_REVIEW_GATE_SESSION_ID", "cursor")
+	if got := currentSessionID(); got != "cursor" {
+		t.Fatalf("Cursor session id = %q", got)
+	}
+}

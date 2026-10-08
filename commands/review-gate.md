@@ -1,5 +1,5 @@
 ---
-description: Toggle the Plannotator review gate for THIS session — review every Edit/Write in the code-review UI before it lands.
+description: Toggle the Plannotator review gate for this agent session.
 ---
 
 Run the review-gate toggle with the user's argument (default to `toggle` if none given):
@@ -16,20 +16,20 @@ Valid arguments: `on`, `off`, `toggle`, `status`, optionally with `--skip-tests`
 `__tests__/` dir). Useful when you don't need to review generated/updated tests.
 The option is stored per session; `status` reports whether it's active.
 
-The gate is toggled **per Claude Code session**. `/review-gate on` enables it for
-the current session only — other running Claude Code instances are unaffected.
-State is keyed off `CLAUDE_CODE_SESSION_ID` (present in the session's env); if
-that's missing the command errors rather than guessing which session to act on.
+The gate is toggled **per agent session**. `/review-gate on` enables it for the
+current Claude Code, Codex, or Cursor session only. Other running sessions are
+unaffected. The host provides the session identity; if none is available, the
+command errors rather than guessing which session to act on.
 
 Report the command's output back to the user verbatim. The per-session flag is
 checked at hook runtime, so the change takes effect on the very next Edit/Write —
 no restart needed.
 
-While the gate is **enabled**: every Edit/Write/MultiEdit you propose opens
-in Plannotator's code-review UI (side-by-side diff, line comments). If it
+While the gate is **enabled**: every supported file edit you propose opens in
+Plannotator's code-review UI (side-by-side diff, line comments). If it
 comes back denied with reviewer feedback, the change was NOT applied — revise
 it per the feedback and propose the edit again. Do not retry the identical
-edit, and do not work around the gate by writing files via Bash.
+edit, and do not work around the gate by writing files through a shell command.
 
 While the gate is enabled, **narrate the edits worth narrating**.
 Before making an edit, queue an explanation and the gate posts it into that edit's review, pinned to the line:

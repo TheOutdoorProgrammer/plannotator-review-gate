@@ -1,20 +1,20 @@
 # plannotator-review-gate
 
-Review every edit Claude Code proposes — in a real diff UI, before it touches your disk.
+Review edits proposed by Claude Code, Codex, or Cursor in a real diff UI before
+they touch your disk.
 
-Claude Code's built-in permission prompt asks *"allow this edit?"* with a preview you
-can't comment on. This hook replaces that moment with a full code review: the proposed
-change opens in [Plannotator](https://github.com/backnotprop/plannotator)'s review UI as
-a side-by-side diff. Approve it and the edit applies. Leave line comments and the edit is
-**denied** — never written — and your feedback goes back to the model, which revises and
-proposes again.
+The built-in permission prompts offer limited review context. This hook replaces
+that moment with a full code review: the proposed change opens in
+[Plannotator](https://github.com/backnotprop/plannotator)'s review UI as a
+side-by-side diff. Approve it and the edit applies. Leave line comments and the
+edit is **denied**, never written, and your feedback goes back to the model.
 
 It's opt-in **per session**, so one terminal can review every edit while another works
 unimpeded.
 
 ```mermaid
 flowchart LR
-    A[Claude proposes<br/>Edit / Write] --> B{Gate on for<br/>this session?}
+    A[Agent proposes<br/>a file edit] --> B{Gate on for<br/>this session?}
     B -->|no| Z[Normal permission flow]
     B -->|yes| C{Worth<br/>reviewing?}
     C -->|"whitespace, comments,<br/>scratchpads, plans"| Z
@@ -52,14 +52,24 @@ make install          # vets, tests, installs to ~/bin
 
 ## Setup
 
-**1. Wire it as a PreToolUse hook.** The binary prints its own config:
+**1. Wire it as a PreToolUse hook.** The binary prints host-specific config:
 
 ```bash
-plannotator-review-gate hook-config
+plannotator-review-gate hook-config claude
+plannotator-review-gate hook-config codex
+plannotator-review-gate hook-config cursor
 ```
 
-Add the printed entry to `hooks` in `~/.claude/settings.json`. Multiple hooks per event
-compose, so append to an existing `PreToolUse` array rather than replacing it:
+Merge each entry into the corresponding file:
+
+| Host | Configuration |
+| --- | --- |
+| Claude Code | `~/.claude/settings.json` under `hooks` |
+| Codex | `~/.codex/hooks.json` |
+| Cursor | `~/.cursor/hooks.json` |
+
+Multiple hooks per event compose, so append entries rather than replacing
+existing hooks. Claude configuration looks like this:
 
 ```json
 {
@@ -70,7 +80,7 @@ compose, so append to an existing `PreToolUse` array rather than replacing it:
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/you/bin/plannotator-review-gate",
+            "command": "/Users/you/bin/plannotator-review-gate hook claude",
             "timeout": 345600
           }
         ]
@@ -80,35 +90,46 @@ compose, so append to an existing `PreToolUse` array rather than replacing it:
 }
 ```
 
-> **Don't lower the timeout.** It's how long Claude Code waits for the hook, and therefore
-> how long you have to finish a review. The default (345600s ≈ 4 days) means "as long as
-> you need." Lower it and long reviews get cut off mid-thought.
+> **Don't lower the timeout.** It is how long the host waits for the hook and
+> therefore how long you have to finish a review. The default (345600s, about
+> four days) means "as long as you need." Lower it and long reviews get cut off.
 
-**2. Install the slash command** so you can toggle the gate from inside Claude Code:
+**2. Install the command** so you can toggle the gate from inside each host:
 
 ```bash
-mkdir -p ~/.claude/commands
-curl -fsSL https://raw.githubusercontent.com/TheOutdoorProgrammer/plannotator-review-gate/main/commands/review-gate.md \
-  -o ~/.claude/commands/review-gate.md
+mkdir -p ~/.claude/commands ~/.cursor/commands ~/.codex/prompts
+for target in \
+  ~/.claude/commands/review-gate.md \
+  ~/.cursor/commands/review-gate.md \
+  ~/.codex/prompts/review-gate.md
+do
+  curl -fsSL https://raw.githubusercontent.com/TheOutdoorProgrammer/plannotator-review-gate/main/commands/review-gate.md \
+    -o "$target"
+done
 ```
 
 If you cloned the repo, symlink it instead so it tracks `git pull`:
 
 ```bash
 ln -s "$PWD/commands/review-gate.md" ~/.claude/commands/review-gate.md
+ln -s "$PWD/commands/review-gate.md" ~/.cursor/commands/review-gate.md
+ln -s "$PWD/commands/review-gate.md" ~/.codex/prompts/review-gate.md
 ```
 
-(The release tarballs ship it as well. `go install` gives you only the binary, which is
-why the curl is the default.)
+Claude Code and Cursor expose this as `/review-gate`. Codex custom prompts are
+namespaced, so use `/prompts:review-gate`. Codex has deprecated custom prompts
+in favor of skills, but prompts remain the only way to retain slash-command
+arguments such as `on --skip-tests`.
 
-The command file also carries the rules the agent needs to follow when it gets denied —
-worth installing even if you prefer toggling from a shell.
+The command file also carries the rules the agent needs to follow when it gets
+denied, so it is worth installing even if you prefer toggling from a shell.
 
-**3. Restart Claude Code** so it picks up the new hook.
+**3. Restart the agents** so they pick up the new hooks. In Codex, inspect and
+trust the new hook when `/hooks` prompts you.
 
 ## Usage
 
-Inside a Claude Code session:
+Inside Claude Code or Cursor:
 
 ```text
 /review-gate on               # review every edit from here on
@@ -117,17 +138,24 @@ Inside a Claude Code session:
 /review-gate off
 ```
 
-Or from a shell inside that session:
+Inside Codex, use the namespaced equivalent:
+
+```text
+/prompts:review-gate on
+```
+
+Or from a shell launched inside that agent session:
 
 ```bash
 plannotator-review-gate on
 plannotator-review-gate toggle
 ```
 
-The toggle takes effect on the **very next edit** — no restart. State is keyed off
-`CLAUDE_CODE_SESSION_ID`, so enabling it in one session leaves every other session
-alone. Flags live in `~/.claude/plannotator-review-gate.sessions/` and stale ones are
-swept after 7 days.
+The toggle takes effect on the **very next edit**, with no restart. State is
+keyed by the host's session identifier, so enabling it in one session leaves
+every other session alone. Flags live in
+`~/.claude/plannotator-review-gate.sessions/` for backward compatibility and
+stale ones are swept after seven days.
 
 ### Narrating an edit
 
@@ -142,7 +170,8 @@ plannotator-review-gate note internal/model/model.go --type concern \
 
 Queue notes *before* the edit; the gate posts them when that edit comes up for review and drops them once shown.
 `--line N` or `--line N-M` pins to a line, no `--line` posts a review-level comment, and `--type` is `comment` (default), `suggestion`, or `concern`.
-Notes are per session (`CLAUDE_CODE_SESSION_ID`), queued in `~/.claude/plannotator-review-gate.notes/`, and swept after 7 days.
+Notes are per agent session, queued in
+`~/.claude/plannotator-review-gate.notes/`, and swept after seven days.
 
 **The queue pushes back on notes that aren't pinned.** Narration is worth reading only next to the code it explains, but notes are queued *before* the edit exists — so pinning means working out the post-edit line number, and the cheap way out is to park everything on line 1. Two guards make that the expensive option:
 
@@ -223,8 +252,8 @@ whichever toggled last, so it can show a lock while one of them is ungated. Trus
 **The review UI opens twice per edit** — you have both this gate and a separate
 Plannotator edit-hook wired in `settings.json`. Keep one.
 
-**Reviews get cut off** — your `settings.json` hook `timeout` is too low. See the note
-in Setup.
+**Reviews get cut off** — the host hook `timeout` is too low. See the note in
+Setup.
 
 **Nothing happens on edits** — check `plannotator-review-gate status` inside that
 session. The gate is per-session and off by default.

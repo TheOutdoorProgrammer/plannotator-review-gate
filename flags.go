@@ -51,9 +51,22 @@ func gateOpts(sessionID string) (opts map[string]bool, enabled bool) {
 	return opts, true
 }
 
+func currentSessionID() string {
+	for _, name := range []string{
+		"PLANNOTATOR_REVIEW_GATE_SESSION_ID",
+		"CLAUDE_CODE_SESSION_ID",
+		"CODEX_THREAD_ID",
+		"CODEX_SESSION_ID",
+	} {
+		if value := os.Getenv(name); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // reviewGateCommand is the per-session toggle: on|off|toggle|status, optionally
-// --skip-tests. The session id comes from CLAUDE_CODE_SESSION_ID, so a bare
-// shell invocation errors instead of guessing which session to act on.
+// --skip-tests. Each host exposes its own session environment variable.
 func reviewGateCommand(args []string) {
 	verb := ""
 	if len(args) > 0 {
@@ -64,10 +77,10 @@ func reviewGateCommand(args []string) {
 		return
 	}
 
-	sessionID := os.Getenv("CLAUDE_CODE_SESSION_ID")
+	sessionID := currentSessionID()
 	if sessionID == "" {
-		fmt.Fprintln(os.Stderr, "review gate: no CLAUDE_CODE_SESSION_ID — run this "+
-			"inside a Claude Code session (the gate is toggled per session).")
+		fmt.Fprintln(os.Stderr, "review gate: no supported agent session id; run this "+
+			"inside Claude Code, Codex, or Cursor (the gate is toggled per session).")
 		os.Exit(64)
 	}
 
@@ -100,8 +113,8 @@ func reviewGateCommand(args []string) {
 		if skipTests {
 			extra = " (skipping test files)"
 		}
-		fmt.Printf("review gate: enabled for this session%s — every gated "+
-			"Edit/Write opens in Plannotator's review UI\n", extra)
+		fmt.Printf("review gate: enabled for this session%s; every gated "+
+			"edit opens in Plannotator's review UI\n", extra)
 		updateReviewGateSidebar(true)
 	case verb == "off" || verb == "toggle":
 		_ = os.Remove(flag)
@@ -126,7 +139,7 @@ func reviewGateCommand(args []string) {
 }
 
 func printUsage() {
-	fmt.Println("plannotator-review-gate — review every Claude Code edit before it lands")
+	fmt.Println("plannotator-review-gate: review agent edits before they land")
 	fmt.Println()
 	fmt.Println("usage:")
 	fmt.Println("  plannotator-review-gate on [--skip-tests]   enable for this session")
@@ -134,11 +147,11 @@ func printUsage() {
 	fmt.Println("  plannotator-review-gate toggle              flip it")
 	fmt.Println("  plannotator-review-gate status              is it on?")
 	fmt.Println("  plannotator-review-gate note <file> …       queue a note to show in the review")
-	fmt.Println("  plannotator-review-gate hook-config         print the settings.json wiring")
+	fmt.Println("  plannotator-review-gate hook-config [host]  print host hook wiring")
 	fmt.Println("  plannotator-review-gate version             print the version")
 	fmt.Println()
-	fmt.Println("With no arguments it runs as a Claude Code PreToolUse hook, reading the")
-	fmt.Println("event from stdin. The toggle is per session, keyed off CLAUDE_CODE_SESSION_ID.")
+	fmt.Println("With no arguments it remains a Claude Code hook for compatibility.")
+	fmt.Println("Generated wiring uses `hook claude|codex|cursor` explicitly.")
 }
 
 // pruneStaleFlags removes flags left by sessions that exited without disabling

@@ -29,16 +29,10 @@ func stagedRelPath(path, cwd string) string {
 	return filepath.Base(path)
 }
 
-// stageRepo builds a throwaway git repo whose only unstaged change is the
-// proposed edit: HEAD holds the current content (or intent-to-add for a new
-// file), the worktree holds the proposed content, keeping the real rel path.
-func stageRepo(repo string, ch *change, cwd string) error {
-	rel := stagedRelPath(ch.path, cwd)
-	target := filepath.Join(repo, rel)
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
-	}
-
+// stageRepo builds a throwaway git repo whose unstaged diff is the complete
+// proposed tool call. HEAD holds the current files and the worktree holds the
+// proposed files.
+func stageRepo(repo string, changes []change, cwd string) error {
 	run := func(args ...string) error {
 		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
 		return cmd.Run()
@@ -61,32 +55,64 @@ func stageRepo(repo string, ch *change, cwd string) error {
 		_ = run("config", kv[0], kv[1])
 	}
 
-	if ch.exists {
+	rels := make(map[string]string, len(changes))
+	for _, ch := range changes {
+		rel := stagedRelPath(ch.path, cwd)
+		if prior, exists := rels[rel]; exists && prior != ch.path {
+			return fmt.Errorf("staged paths collide at %s", rel)
+		}
+		rels[rel] = ch.path
+		if !ch.exists {
+			continue
+		}
+		target := filepath.Join(repo, rel)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
 		if err := os.WriteFile(target, []byte(ch.before), 0o644); err != nil {
 			return err
 		}
 		if err := run("add", rel); err != nil {
 			return err
 		}
-		if err := run("commit", "-q", "-m", "current"); err != nil {
+	}
+	if err := run("commit", "-q", "--allow-empty", "-m", "current"); err != nil {
+		return err
+	}
+
+	for _, ch := range changes {
+		rel := stagedRelPath(ch.path, cwd)
+		target := filepath.Join(repo, rel)
+		if ch.deleted {
+			if err := os.Remove(target); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		return os.WriteFile(target, []byte(ch.after), 0o644)
+		if err := os.WriteFile(target, []byte(ch.after), 0o644); err != nil {
+			return err
+		}
+		if !ch.exists {
+			if err := run("add", "-N", rel); err != nil {
+				return err
+			}
+		}
 	}
-	// New file: commit empty, then intent-to-add so it shows in the unstaged diff.
-	if err := run("commit", "-q", "--allow-empty", "-m", "empty"); err != nil {
-		return err
-	}
-	if err := os.WriteFile(target, []byte(ch.after), 0o644); err != nil {
-		return err
-	}
-	return run("add", "-N", rel)
+	return nil
+}
+
+type reviewNotes struct {
+	rel   string
+	notes []note
 }
 
 // runPlannotator opens the staged repo in Plannotator's review UI: allow on
 // approval, deny carrying feedback, nil when the user dismisses it, broken-gate
-// deny when no verdict comes back at all. posted reports whether ns was shown.
-func runPlannotator(ctx context.Context, repo, rel string, ns []note) (d *Decision, posted bool) {
+// deny when no verdict comes back at all. posted reports whether notes were shown.
+func runPlannotator(ctx context.Context, repo string, notesByFile []reviewNotes) (d *Decision, posted bool) {
 	bin := plannotatorBin()
 	if bin == "" {
 		return gateBroken("plannotator binary not found on PATH or in ~/.local/bin"), false
@@ -98,12 +124,12 @@ func runPlannotator(ctx context.Context, repo, rel string, ns []note) (d *Decisi
 	if err := cmd.Start(); err != nil {
 		return gateBroken(fmt.Sprintf("could not start plannotator (%v)", err)), false
 	}
-	if len(ns) > 0 {
-		posted = narrate(ctx, filepath.Base(repo), rel, ns)
+	if len(notesByFile) > 0 {
+		posted = narrate(ctx, filepath.Base(repo), notesByFile)
 	}
 
 	err := cmd.Wait()
-	d, dismissed := verdictFromReview(stdout.String(), ns, posted)
+	d, dismissed := verdictFromReview(stdout.String(), flattenNotes(notesByFile), posted)
 	switch {
 	case d != nil:
 		return d, posted
@@ -139,7 +165,7 @@ func verdictFromReview(out string, ns []note, posted bool) (*Decision, bool) {
 // narrate posts the queued notes into the review that was just opened. This is
 // the one place the gate does NOT fail closed: an unposted comment costs
 // nothing, whereas failing an edit over cosmetics would be maddening.
-func narrate(ctx context.Context, project, rel string, ns []note) bool {
+func narrate(ctx context.Context, project string, notesByFile []reviewNotes) bool {
 	baseURL, ok := findReviewSession(ctx, project)
 	if !ok {
 		fmt.Fprintln(os.Stderr, "plannotator-review-gate: review session never registered — notes not posted")
@@ -149,11 +175,21 @@ func narrate(ctx context.Context, project, rel string, ns []note) bool {
 		fmt.Fprintln(os.Stderr, "plannotator-review-gate: review has no origin — notes would be dropped")
 		return false
 	}
-	if err := postNotes(ctx, baseURL, rel, ns); err != nil {
-		fmt.Fprintf(os.Stderr, "plannotator-review-gate: %v\n", err)
-		return false
+	for _, fileNotes := range notesByFile {
+		if err := postNotes(ctx, baseURL, fileNotes.rel, fileNotes.notes); err != nil {
+			fmt.Fprintf(os.Stderr, "plannotator-review-gate: %v\n", err)
+			return false
+		}
 	}
 	return true
+}
+
+func flattenNotes(notesByFile []reviewNotes) []note {
+	var out []note
+	for _, fileNotes := range notesByFile {
+		out = append(out, fileNotes.notes...)
+	}
+	return out
 }
 
 // decisionFromReview maps Plannotator's review stdout to a verdict. dismissed

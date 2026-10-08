@@ -50,7 +50,7 @@ func TestStageRepoIgnoresGlobalSigningAndHooks(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := t.TempDir()
-			if err := stageRepo(repo, tc.ch, cwd); err != nil {
+			if err := stageRepo(repo, []change{*tc.ch}, cwd); err != nil {
 				t.Fatalf("stageRepo: %v", err)
 			}
 			out, err := exec.Command("git", "-C", repo, "log", "--format=%G?", "-1").Output()
@@ -99,7 +99,7 @@ func TestStageRepoDiff(t *testing.T) {
 				t.Fatal(err)
 			}
 			repo := t.TempDir()
-			if err := stageRepo(repo, tc.ch, cwd); err != nil {
+			if err := stageRepo(repo, []change{*tc.ch}, cwd); err != nil {
 				t.Fatalf("stageRepo: %v", err)
 			}
 			out, err := exec.Command("git", "-C", repo, "diff", "HEAD").Output()
@@ -128,10 +128,49 @@ func TestStageRepoOutsideCWD(t *testing.T) {
 	outside := filepath.Join(t.TempDir(), "elsewhere.go")
 	repo := t.TempDir()
 	ch := &change{path: outside, after: "package main\n"}
-	if err := stageRepo(repo, ch, t.TempDir()); err != nil {
+	if err := stageRepo(repo, []change{*ch}, t.TempDir()); err != nil {
 		t.Fatalf("stageRepo: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(repo, "elsewhere.go")); err != nil {
 		t.Errorf("expected the file staged at its basename: %v", err)
+	}
+}
+
+func TestStageRepoAtomicMultiFileDiff(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not available: %v", err)
+	}
+	hostileGlobalConfig(t)
+
+	cwd := t.TempDir()
+	changes := []change{
+		{
+			path:   filepath.Join(cwd, "edit.txt"),
+			before: "before\n",
+			after:  "after\n",
+			exists: true,
+		},
+		{path: filepath.Join(cwd, "add.txt"), after: "added\n"},
+		{
+			path:    filepath.Join(cwd, "delete.txt"),
+			before:  "deleted\n",
+			exists:  true,
+			deleted: true,
+		},
+	}
+
+	repo := t.TempDir()
+	if err := stageRepo(repo, changes, cwd); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("git", "-C", repo, "diff", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff := string(out)
+	for _, want := range []string{"edit.txt", "add.txt", "delete.txt", "+after", "+added", "-deleted"} {
+		if !strings.Contains(diff, want) {
+			t.Errorf("multi-file diff missing %q:\n%s", want, diff)
+		}
 	}
 }

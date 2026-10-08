@@ -200,8 +200,63 @@ func TestGateReviewGateSkipTests(t *testing.T) {
 	}
 }
 
+func TestGateFailsClosedForMalformedCodexPatch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if err := os.MkdirAll(sessionsDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(flagPath("codex-session"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	ev := &Event{
+		host:          hostCodex,
+		HookEventName: "PreToolUse",
+		SessionID:     "codex-session",
+		CWD:           work,
+		ToolName:      "apply_patch",
+		ToolInput: mustJSON(t, map[string]any{
+			"command": "*** Begin Patch\n*** Add File: broken.go\n+package broken\n",
+		}),
+	}
+	d := gateReviewGate(context.Background(), ev)
+	if d == nil || d.Permission != "deny" ||
+		!strings.Contains(d.Reason, "could not preview") {
+		t.Fatalf("malformed Codex patch should fail closed, got %+v", d)
+	}
+}
+
+func TestCursorDeleteReachesGate(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", "")
+	if err := os.MkdirAll(sessionsDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(flagPath("cursor-session"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	path := filepath.Join(work, "delete.go")
+	if err := os.WriteFile(path, []byte("package delete\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ev := &Event{
+		host:          hostCursor,
+		HookEventName: "PreToolUse",
+		SessionID:     "cursor-session",
+		CWD:           work,
+		ToolName:      "Delete",
+		ToolInput:     mustJSON(t, map[string]any{"path": path}),
+	}
+	d := gateReviewGate(context.Background(), ev)
+	if d == nil || d.Permission != "deny" ||
+		!strings.Contains(d.Reason, "stage the edit") {
+		t.Fatalf("Cursor Delete should reach the fail-closed gate, got %+v", d)
+	}
+}
+
 func TestRespondDecision(t *testing.T) {
-	out, err := respondDecision(&Decision{Permission: "deny", Reason: "line one\nline two"})
+	out, err := respondDecision(hostClaude, &Decision{Permission: "deny", Reason: "line one\nline two"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,6 +264,16 @@ func TestRespondDecision(t *testing.T) {
 	for _, want := range []string{`"hookEventName":"PreToolUse"`, `"permissionDecision":"deny"`, `line one\nline two`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("envelope missing %q: %s", want, out)
+		}
+	}
+
+	cursorOut, err := respondDecision(hostCursor, &Decision{Permission: "deny", Reason: "fix this"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"permission":"deny"`, `"agent_message":"fix this"`} {
+		if !strings.Contains(cursorOut, want) {
+			t.Errorf("Cursor envelope missing %q: %s", want, cursorOut)
 		}
 	}
 }
