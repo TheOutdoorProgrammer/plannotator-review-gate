@@ -178,7 +178,7 @@ func hookConfig(h host) map[string]any {
 			"hooks": map[string]any{
 				"preToolUse": []any{map[string]any{
 					"command":    binaryPath() + " hook cursor",
-					"matcher":    "Shell|Write|Delete|ApplyPatch|apply_patch",
+					"matcher":    "Shell|Write|Delete",
 					"timeout":    reviewGateTimeout,
 					"failClosed": true,
 				}},
