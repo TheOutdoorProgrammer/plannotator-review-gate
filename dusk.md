@@ -20,6 +20,7 @@ Closing the TUI without submitting defers to the normal permission flow.
 The gate is opt-in per agent session. Claude uses `CLAUDE_CODE_SESSION_ID`, Codex uses `CODEX_THREAD_ID`, and the Cursor `preToolUse` adapter injects the event's conversation id only when it rewrites a review-gate shell command.
 Flags remain under `~/.claude/plannotator-review-gate.sessions/` for backward compatibility and stale ones are swept after seven days.
 Duplicate Cursor hook registrations coordinate by `tool_use_id`, so one process owns the Plannotator review while the others wait for and return the same verdict.
+For an approved-with-notes verdict, a one-shot Cursor `postToolUse` hook delivers the non-blocking review text after the edit lands.
 `plannotator-review-gate hook-config` prints mergeable hook snippets for all three agents, and its long timeout is the review deadline rather than decoration: lowering it cuts reviews off mid-thought.
 Releases are tag-driven, with a `vX.Y.Z` tag running the tests and then GoReleaser.
 

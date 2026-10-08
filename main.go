@@ -91,6 +91,17 @@ func main() {
 				os.Exit(64)
 			}
 			hookMode(h)
+		case "hook-post":
+			if len(os.Args) < 3 {
+				fmt.Fprintln(os.Stderr, "plannotator-review-gate: hook-post requires a host")
+				os.Exit(64)
+			}
+			h, err := parseHost(os.Args[2])
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "plannotator-review-gate:", err)
+				os.Exit(64)
+			}
+			postHookMode(h)
 		case "session-env":
 			if err := emitSessionEnv(os.Stdin, os.Stdout); err != nil {
 				fmt.Fprintln(os.Stderr, "plannotator-review-gate:", err)
@@ -154,6 +165,34 @@ func hookMode(h host) {
 		}
 	}
 	emit(h, review())
+}
+
+func postHookMode(h host) {
+	var ev Event
+	if err := json.NewDecoder(os.Stdin).Decode(&ev); err != nil {
+		fmt.Fprintf(os.Stderr, "plannotator-review-gate: decoding post event: %v\n", err)
+		return
+	}
+	if !eventMatchesHost(h, &ev) {
+		return
+	}
+	normalizeEvent(h, &ev)
+	if ev.HookEventName != "PostToolUse" || ev.ToolUseID == "" {
+		return
+	}
+	additionalContext, err := claimReviewContext(&ev)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "plannotator-review-gate: reading approved review notes: %v\n", err)
+		return
+	}
+	if additionalContext == "" {
+		return
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(map[string]string{
+		"additional_context": additionalContext,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "plannotator-review-gate: encoding approved review notes: %v\n", err)
+	}
 }
 
 // emit prints the PreToolUse verdict, if any. A nil Decision means defer: print

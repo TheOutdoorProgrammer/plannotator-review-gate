@@ -38,6 +38,9 @@ func normalizeEvent(h host, ev *Event) {
 	if ev.HookEventName == "preToolUse" {
 		ev.HookEventName = "PreToolUse"
 	}
+	if ev.HookEventName == "postToolUse" {
+		ev.HookEventName = "PostToolUse"
+	}
 }
 
 func eventMatchesHost(h host, ev *Event) bool {
@@ -191,6 +194,11 @@ func hookConfig(h host) map[string]any {
 					"matcher":    "Shell|Write|Delete",
 					"timeout":    reviewGateTimeout,
 					"failClosed": true,
+				}},
+				"postToolUse": []any{map[string]any{
+					"command": binaryPath() + " hook-post cursor",
+					"matcher": "Write|Delete",
+					"timeout": 30,
 				}},
 			},
 		}

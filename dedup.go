@@ -27,8 +27,7 @@ func coordinateReview(ctx context.Context, ev *Event, review func() *Decision) *
 	}
 	pruneInflight(root)
 
-	sum := sha256.Sum256([]byte(ev.SessionID + "\x00" + ev.ToolUseID))
-	entry := filepath.Join(root, hex.EncodeToString(sum[:]))
+	entry := reviewEntry(root, ev)
 	err := os.Mkdir(entry, 0o700)
 	switch {
 	case err == nil:
@@ -38,6 +37,41 @@ func coordinateReview(ctx context.Context, ev *Event, review func() *Decision) *
 	default:
 		return gateBroken(fmt.Sprintf("could not coordinate duplicate review hooks (%v)", err))
 	}
+}
+
+func reviewEntry(root string, ev *Event) string {
+	sum := sha256.Sum256([]byte(ev.SessionID + "\x00" + ev.ToolUseID))
+	return filepath.Join(root, hex.EncodeToString(sum[:]))
+}
+
+func claimReviewContext(ev *Event) (string, error) {
+	root := filepath.Join(claudeDir(), inflightDirName)
+	entry := reviewEntry(root, ev)
+	claim, err := os.OpenFile(
+		filepath.Join(entry, "context.claimed"),
+		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+		0o600,
+	)
+	if os.IsExist(err) || os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	_ = claim.Close()
+
+	body, err := os.ReadFile(filepath.Join(entry, "result.json"))
+	if err != nil {
+		return "", err
+	}
+	var verdict sharedVerdict
+	if err := json.Unmarshal(body, &verdict); err != nil {
+		return "", err
+	}
+	if verdict.Decision == nil {
+		return "", nil
+	}
+	return verdict.Decision.AdditionalContext, nil
 }
 
 func leadReview(entry string, review func() *Decision) *Decision {

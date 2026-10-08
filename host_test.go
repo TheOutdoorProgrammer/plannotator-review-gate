@@ -110,7 +110,7 @@ func TestHookConfigs(t *testing.T) {
 	}{
 		{hostClaude, []string{"hook claude", "Edit|Write|MultiEdit"}},
 		{hostCodex, []string{"hook codex", "Bash|Edit|Write", "statusMessage"}},
-		{hostCursor, []string{"hook cursor", "Shell|Write", "failClosed"}},
+		{hostCursor, []string{"hook cursor", "hook-post cursor", "Shell|Write", "failClosed"}},
 	}
 	for _, tc := range cases {
 		raw, err := json.Marshal(hookConfig(tc.host))

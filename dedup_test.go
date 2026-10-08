@@ -20,7 +20,11 @@ func TestCoordinateReviewSharesOneVerdict(t *testing.T) {
 			close(started)
 		}
 		<-release
-		return &Decision{Permission: "deny", Reason: "review feedback"}
+		return &Decision{
+			Permission:        "allow",
+			Reason:            "approved with notes",
+			AdditionalContext: "non-blocking review note",
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -43,8 +47,24 @@ func TestCoordinateReviewSharesOneVerdict(t *testing.T) {
 		t.Fatalf("review ran %d times, want once", got)
 	}
 	for i, decision := range results {
-		if decision == nil || decision.Permission != "deny" || decision.Reason != "review feedback" {
+		if decision == nil || decision.Permission != "allow" ||
+			decision.AdditionalContext != "non-blocking review note" {
 			t.Errorf("result %d = %+v", i, decision)
 		}
+	}
+
+	context, err := claimReviewContext(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if context != "non-blocking review note" {
+		t.Fatalf("claimed context = %q", context)
+	}
+	context, err = claimReviewContext(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if context != "" {
+		t.Fatalf("context was delivered twice: %q", context)
 	}
 }
